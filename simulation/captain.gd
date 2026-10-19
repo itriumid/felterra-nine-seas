@@ -19,8 +19,8 @@ const PORT_HOURS := Vector2(12.0, 48.0)
 ## Meters ahead the captain looks for land while beating.
 const LOOKOUT := 4000.0
 ## How fast a captain brings the ship onto a new heading, in radians per game second: two
-## degrees a game minute, the same rate as the player's helm at an hour a second, so a course
-## change looks like someone turning the wheel and handing over the helm never jumps.
+## degrees a game minute, the same rate as the player's helm, so a course change looks like
+## someone turning the wheel and handing over the helm never jumps.
 const TURN_RATE := deg_to_rad(2.0) / 60.0
 
 var role: Role
@@ -40,13 +40,30 @@ var in_bubble := false
 var replan := false
 ## A ship this captain is chasing, or null. The route is its position, updated as it moves.
 var quarry: Captain
+## Set once the ship has been boarded and taken. It sails on, plundered, but won't strike again.
+var struck := false
+## At war with the player: fires on them in a bubble. A merchant once attacked; the navy when
+## hunting a captain without honor.
+var hostile := false
+## A navy ship sent after the player.
+var hunting := false
 var _beating := false
 var _since_route := 0.0
+
+
+## Of a navy ship's berths, the share filled: warships sailed crowded, to man the guns and fight.
+const NAVY_MANNING := 0.7
 
 
 func _init(captain_role: Role, ship_design: ShipDesign) -> void:
 	role = captain_role
 	ship = MapShip.new(ship_design)
+	if role == Role.NAVY:
+		ship.crew = roundi(ship_design.crew_maximum * NAVY_MANNING)
+		ship.guns = ship_design.gun_ports
+	else:
+		# Merchantmen carried a few guns against small raiders, not a battery.
+		ship.guns = ship_design.gun_ports / 4
 
 
 func role_name() -> String:
@@ -73,20 +90,26 @@ func update(delta: float, true_wind: Vector2, voyage: Voyage) -> void:
 		ship.speed = 0.0
 		in_port_for -= delta
 		if at_sea():
-			sail_for(_next_port(voyage), voyage.navigation)
+			var next := _next_port(voyage)
+			if role == Role.MERCHANT:
+				_load_cargo(voyage, next)
+			sail_for(next, voyage.navigation)
 		return
-	if navigate(delta, true_wind, voyage):
+	if navigate(delta, true_wind, voyage) and not hunting:
 		in_port_for = voyage.random.randf_range(PORT_HOURS.x, PORT_HOURS.y) * 3600.0
 		if destination.has("position"):
 			# Come in and moor: the next voyage starts from the port itself.
 			ship.position = destination.position
+			_unload_cargo(voyage)
 
 
 ## Sails the route for one step. Returns true once the route is done; the ship doesn't move
 ## that step.
 func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
-	if quarry != null:
-		_follow_quarry(delta, voyage)
+	if hunting:
+		_follow(voyage.ship.position, delta, voyage)
+	elif quarry != null:
+		_follow(quarry.ship.position, delta, voyage)
 	while not route.is_empty() and _passed(route, voyage):
 		route.pop_front()
 	if route.is_empty():
@@ -103,10 +126,9 @@ func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
 	return false
 
 
-## Heads straight for the quarry when the water between is clear; otherwise plots a route to
-## where it is now and sails that, plotting again every few hours as it moves.
-func _follow_quarry(delta: float, voyage: Voyage) -> void:
-	var target := quarry.ship.position
+## Heads straight for a moving target when the water between is clear; otherwise plots a route
+## to where it is now and sails that, plotting again every few hours as it moves.
+func _follow(target: Vector2, delta: float, voyage: Voyage) -> void:
 	_since_route += delta
 	if voyage.navigation.clear(ship.position, target, 500.0):
 		route = [target]
@@ -166,6 +188,39 @@ func _heading_toward(target: Vector2, true_wind: Vector2, voyage: Voyage) -> flo
 func _go_about() -> void:
 	tack = -tack
 	tacks_made += 1
+
+
+## A merchant loads whatever will sell best at the next port, as much as the hold takes and the
+## port can spare. Merchants trading move prices just as the player does.
+func _load_cargo(voyage: Voyage, next: Dictionary) -> void:
+	var here: Market = voyage.markets.get(destination.get("name", ""), null)
+	var there: Market = voyage.markets.get(next.get("name", ""), null)
+	if here == null or there == null:
+		return
+	var best := ""
+	var best_margin := 0.0
+	for id in Goods.ids():
+		var margin := there.selling_price(id) - here.buying_price(id)
+		if margin > best_margin:
+			best_margin = margin
+			best = id
+	if best.is_empty():
+		return
+	var spare := floori(here.stock[best] - here.settled[best] * 0.5)
+	var tons := clampi(spare, 0, ship.free_tons())
+	if tons > 0:
+		here.take(best, tons)
+		ship.hold[best] = ship.hold.get(best, 0) + tons
+
+
+func _unload_cargo(voyage: Voyage) -> void:
+	var here: Market = voyage.markets.get(destination.get("name", ""), null)
+	if here == null:
+		return
+	for id in ship.hold:
+		here.put(id, ship.hold[id])
+	ship.hold.clear()
+	struck = false
 
 
 func _next_port(voyage: Voyage) -> Dictionary:
