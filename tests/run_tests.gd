@@ -14,7 +14,13 @@ func _init() -> void:
 	for file_name in DirAccess.get_files_at(TEST_DIRECTORY):
 		if not (file_name.begins_with("test_") and file_name.ends_with(".gd")):
 			continue
-		var script: GDScript = load(TEST_DIRECTORY.path_join(file_name))
+		var script := load(TEST_DIRECTORY.path_join(file_name)) as GDScript
+		if script == null or not script.can_instantiate():
+			# A test file that doesn't compile runs no tests; that's a failure, not a pass.
+			count += 1
+			failures += 1
+			print("FAIL  %s: doesn't compile" % file_name)
+			continue
 		for method in script.get_script_method_list():
 			var method_name: String = method.name
 			if not method_name.begins_with("test_"):
