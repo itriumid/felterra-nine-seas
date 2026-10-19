@@ -231,3 +231,44 @@ func _next_port(voyage: Voyage) -> Dictionary:
 	while choice == destination:
 		choice = voyage.ports[voyage.random.randi_range(0, voyage.ports.size() - 1)]
 	return choice
+
+
+
+## Everything about the captain worth keeping, as plain data. Ports are saved by name; a quarry
+## (only the player's crew chases one) by its index among the voyage's captains.
+func to_saved(voyage: Voyage) -> Dictionary:
+	var waypoints: Array = []
+	for point in route:
+		waypoints.append([point.x, point.y])
+	var stations: Array = []
+	for port in patrol:
+		stations.append(port.name)
+	return {
+		"role": role, "ship": ship.to_saved(), "route": waypoints,
+		"destination": destination.get("name", ""), "patrol": stations,
+		"in_port_for": in_port_for, "tack": tack, "tacks_made": tacks_made,
+		"replan": replan, "struck": struck, "hostile": hostile, "hunting": hunting,
+		"beating": _beating, "since_route": _since_route,
+		"quarry": voyage.captains.find(quarry) if quarry != null else -1,
+	}
+
+
+static func from_saved(saved: Dictionary, voyage: Voyage) -> Captain:
+	var ship := MapShip.from_saved(saved.ship)
+	var captain := Captain.new(int(saved.role) as Role, ship.design)
+	captain.ship = ship
+	for point: Array in saved.route:
+		captain.route.append(Vector2(point[0], point[1]))
+	captain.destination = voyage.port_named(saved.destination)
+	for port_name: String in saved.patrol:
+		captain.patrol.append(voyage.port_named(port_name))
+	captain.in_port_for = saved.in_port_for
+	captain.tack = saved.tack
+	captain.tacks_made = int(saved.tacks_made)
+	captain.replan = saved.replan
+	captain.struck = saved.struck
+	captain.hostile = saved.hostile
+	captain.hunting = saved.hunting
+	captain._beating = saved.beating
+	captain._since_route = saved.since_route
+	return captain

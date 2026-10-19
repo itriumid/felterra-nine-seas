@@ -83,3 +83,32 @@ func step(delta: float, true_wind: Vector2, chart: Chart) -> void:
 		speed = 0.0
 	else:
 		position = next
+
+
+
+## Everything about the ship worth keeping, as plain data for a save file.
+func to_saved() -> Dictionary:
+	return {
+		"design": design.id, "position": [position.x, position.y], "heading": heading,
+		"speed": speed, "aground": aground, "sail_set": sail_set, "hold": hold.duplicate(), "crew": crew,
+		"hull": hull, "fouling": fouling, "guns": guns, "rigging": rigging,
+	}
+
+
+static func from_saved(saved: Dictionary) -> MapShip:
+	var ship := MapShip.new(ShipDesign.named(saved.design))
+	ship.position = Vector2(saved.position[0], saved.position[1])
+	ship.heading = saved.heading
+	ship.speed = saved.speed
+	# A grounded captain steers to get off, so it's part of what happens next.
+	ship.aground = saved.aground
+	ship.sail_set = saved.sail_set
+	for id: String in saved.hold:
+		# Save files store numbers as decimals; tons are whole.
+		ship.hold[id] = int(saved.hold[id])
+	ship.crew = int(saved.crew)
+	ship.hull = saved.hull
+	ship.fouling = saved.fouling
+	ship.guns = int(saved.guns)
+	ship.rigging = saved.rigging
+	return ship

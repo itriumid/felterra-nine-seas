@@ -1,5 +1,8 @@
 class_name WorldView
 extends Node2D
+
+## The player's ship has just come in and moored: a good moment to save.
+signal moored
 ## The one view of the game: the Nusantara seas at any zoom, from the whole chart down to the
 ## ship's deck. The world runs on one clock, ten minutes a second, for every player; zooming only
 ## changes what you see.
@@ -212,12 +215,13 @@ func _port_at(screen_point: Vector2) -> Dictionary:
 
 ## Opens the port screen when the ship moors and closes it when the ship casts off.
 func _follow_port() -> void:
-	var moored := not voyage.docked.is_empty()
-	if moored and _port_screen == null:
+	var in_port := not voyage.docked.is_empty()
+	if in_port and _port_screen == null:
+		moored.emit()
 		_port_screen = PortScreen.new()
 		_port_screen.voyage = voyage
 		_interface_layer.add_child(_port_screen)
-	elif not moored and _port_screen != null:
+	elif not in_port and _port_screen != null:
 		_port_screen.queue_free()
 		_port_screen = null
 

@@ -1,22 +1,34 @@
 extends Node
 ## The game's root: holds the voyage and shows it in the world view. Everything that has to
-## outlast a screen lives in the voyage.
+## outlast a screen lives in the voyage, which is saved whenever the ship moors and when the game
+## closes, and picked up again on the next start.
 
-var voyage := Voyage.new()
+var voyage: Voyage
+## Off whenever a development flag is given, so trying things out never touches a real save.
+var saving := true
 
 # Development aids. --screenshot=<path> saves a frame after --screenshot-after seconds (default
 # 4) and quits; --brig starts in the brig; --help-overlay opens the help; --day=<day of the
 # year> sets the date; --zoom=<level> picks a zoom level, 0 (the whole chart) to 10 (the deck);
 # --bubble starts in a bubble with a merchant brig half a kilometer away; --port-tab=<1 or 2>
 # opens the port screen on the shipyard or the tavern; --plunder starts alongside a merchant that
-# has just struck; --battle starts trading broadsides with a navy brig.
+# has just struck; --battle starts trading broadsides with a navy brig. Any of these starts a
+# fresh voyage and saves nothing. --new-voyage abandons the saved voyage and starts again.
 var _screenshot_path := ""
 var _screenshot_after := 4.0
 
 
 func _ready() -> void:
 	InputActions.register()
+	get_tree().auto_accept_quit = false
+	var arguments := OS.get_cmdline_user_args()
+	saving = arguments.is_empty() or arguments == PackedStringArray(["--new-voyage"])
+	if saving and not "--new-voyage" in arguments:
+		voyage = SaveGame.load_voyage()
+	if voyage == null:
+		voyage = Voyage.new()
 	var view := WorldView.new()
+	view.moored.connect(_save)
 	view.voyage = voyage
 	var show_help := false
 	for argument in OS.get_cmdline_user_args():
@@ -85,6 +97,17 @@ func _take_her() -> void:
 	bubble.ships[0].heading = bubble.player.heading
 	bubble.ships[0].velocity = bubble.player.velocity
 	voyage.board()
+
+
+func _save() -> void:
+	if saving:
+		SaveGame.save(voyage)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save()
+		get_tree().quit()
 
 
 func _process(delta: float) -> void:

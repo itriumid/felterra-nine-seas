@@ -91,6 +91,16 @@ in the public domain. To rebuild the chart, download `ne_10m_land`, `ne_10m_mino
 python3 tools/build_world_map.py <that directory> world/nusantara.png
 ```
 
+## Saving
+
+Your voyage is saved whenever you moor in a port and when you close the game, and the game
+carries on from it next time. Saves wait out battles: a bubble lasts minutes, and you'll be back
+on the map soon enough. To abandon a voyage and start again, run `godot --path . -- --new-voyage`.
+
+The save is one file, `voyage.json`, in your system's place for application data, under
+"Felterra Nine Seas" (on Windows, `%APPDATA%`; on macOS, `~/Library/Application Support`; on
+Linux, `~/.local/share`).
+
 ## Controls
 
 | Keys and mouse | Gamepad | Does |
