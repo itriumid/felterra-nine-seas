@@ -1,0 +1,83 @@
+name: Test
+
+# Runs the tests with the same Godot release on every operating system the game ships for. Each
+# matrix job is meant to be a required status check, so it runs on every pull request push.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same pull request makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Any `permissions:` block replaces the default token scopes, so grant per job.
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  file-names:
+    name: File names
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # macOS ignores case in file names and Linux doesn't, so a capital letter that works on
+      # one machine crashes on another. Godot's own files and Markdown are exempt.
+      - name: Check that game files are lowercase snake_case
+        run: |
+          bad=$(git ls-files 'game/*' 'simulation/*' 'tests/*' 'tools/*' 'world/*' \
+            | grep -vE '^[a-z0-9_/]+(\.[a-z0-9]+)+$' || true)
+          if [ -n "$bad" ]; then
+            echo "These paths aren't lowercase snake_case:"
+            echo "$bad"
+            exit 1
+          fi
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      # One operating system failing says nothing about the others; let them all finish.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-latest
+            archive: linux.x86_64
+            binary: Godot_v4.7.2-stable_linux.x86_64
+          - name: macOS
+            runner: macos-latest
+            archive: macos.universal
+            binary: Godot.app/Contents/MacOS/Godot
+          - name: Windows
+            runner: windows-latest
+            archive: win64.exe
+            # The console build, so test output reaches the log.
+            binary: Godot_v4.7.2-stable_win64_console.exe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download Godot
+        run: |
+          curl --fail --location --silent --show-error --output godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_${{ matrix.archive }}.zip"
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/${{ matrix.binary }}" >> "$GITHUB_ENV"
+      # Importing builds the class name cache the scripts need; it can report errors about
+      # the editor that don't matter here, so only the test run decides the result.
+      - name: Import the project
+        run: '"$GODOT" --headless --path . --import || true'
+      - name: Run the tests
+        run: '"$GODOT" --headless --path . --script tests/run_tests.gd'
