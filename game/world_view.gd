@@ -1,11 +1,13 @@
 class_name WorldView
 extends Node2D
 ## The one view of the game: the Nusantara seas at any zoom, from the whole chart down to the
-## ship's deck. The world runs on one clock, an hour a second, for every player; zooming only
+## ship's deck. The world runs on one clock, ten minutes a second, for every player; zooming only
 ## changes what you see.
 
 ## Game seconds per real second. Fixed: in a shared world every player is on the same clock.
-const TIME_SCALE := 3600.0
+## Ten minutes a second: Batavia to Semarang takes about four minutes, a day two and a half,
+## and a monsoon season a few hours of play.
+const TIME_SCALE := 600.0
 ## Meters per screen pixel, from the whole chart down to the ship. Every level keeps screen
 ## pixels one size; zooming changes how much world each one covers.
 const ZOOM_LEVELS: Array[float] = [4000.0, 2000.0, 1000.0, 400.0, 100.0, 25.0, 6.0, 2.0, 1.0, 0.5, 1.0 / 3.0]
@@ -38,6 +40,9 @@ var zoom_index := DEFAULT_ZOOM
 
 var _material: ShaderMaterial
 var _display: MapDisplay
+var _interface_layer: CanvasLayer
+var _port_screen: PortScreen
+var _plunder_screen: PlunderScreen
 ## True-size views of ships near the player, the player's first, reused frame to frame.
 var _ship_views: Array[ShipView] = []
 ## Full-physics ships posed to match map ships, so they can be drawn at true size.
@@ -49,6 +54,7 @@ var _since_track := 0.0
 ## The bubble being drawn, its ships' wakes, and the zoom to go back to when it closes.
 var _bubble: Bubble
 var _wakes: Array[WakeView] = []
+var _effects: EffectsView
 var _zoom_before_bubble := DEFAULT_ZOOM
 var _collisions_seen := 0
 
@@ -75,12 +81,12 @@ func _ready() -> void:
 	sea.set_anchors_preset(Control.PRESET_FULL_RECT)
 	sea_layer.add_child(sea)
 
-	var interface_layer := CanvasLayer.new()
-	add_child(interface_layer)
+	_interface_layer = CanvasLayer.new()
+	add_child(_interface_layer)
 	_display = MapDisplay.new()
 	_display.voyage = voyage
 	_display.time_scale = TIME_SCALE
-	interface_layer.add_child(_display)
+	_interface_layer.add_child(_display)
 
 
 func show_help() -> void:
@@ -94,11 +100,17 @@ func _physics_process(delta: float) -> void:
 			if voyage.bubble == null:
 				break
 			voyage.step_bubble()
+			if voyage.bubble == null:
+				break
 			for wake in _wakes:
 				wake.advance(Bubble.STEP)
+			if _effects != null:
+				_effects.advance(Bubble.STEP)
 	else:
 		_read_controls(delta)
 	_follow_bubble()
+	_follow_port()
+	_follow_plunder()
 	# The world's clock never waits for a bubble: in a shared world, it can't.
 	var remaining := delta * TIME_SCALE
 	while remaining > 0.0:
@@ -114,23 +126,28 @@ func _physics_process(delta: float) -> void:
 
 
 func _read_controls(delta: float) -> void:
+	if not voyage.docked.is_empty():
+		# Moored: the port screen has the controls. The view still zooms.
+		_read_view_controls()
+		return
 	var helm := Input.get_axis("steer_port", "steer_starboard")
 	if helm != 0.0:
 		voyage.take_helm()
 		voyage.ship.heading = wrapf(voyage.ship.heading + deg_to_rad(helm * TURN_RATE * delta), -PI, PI)
-	if Input.is_action_just_pressed("set_course"):
+	if Input.is_action_just_pressed("set_course") and get_viewport().gui_get_hovered_control() == null:
 		var mouse := get_viewport().get_mouse_position()
 		var clicked := _captain_at(mouse)
+		var port := _port_at(mouse)
 		if clicked != null:
 			voyage.chase(clicked)
+		elif not port.is_empty():
+			voyage.sail_to_port(port)
 		else:
 			voyage.set_course(_origin() + mouse * ZOOM_LEVELS[zoom_index])
 	if Input.is_action_just_pressed("more_sail"):
 		voyage.ship.sail_set = minf(snappedf(voyage.ship.sail_set + 0.25, 0.25), 1.0)
 	if Input.is_action_just_pressed("less_sail"):
 		voyage.ship.sail_set = maxf(snappedf(voyage.ship.sail_set - 0.25, 0.25), 0.0)
-	if Input.is_action_just_pressed("switch_ship"):
-		voyage.switch_ship()
 	_read_view_controls()
 
 
@@ -150,6 +167,12 @@ func _read_bubble_controls(delta: float) -> void:
 	ship.backing_headsails = Input.is_action_pressed("back_headsails")
 	if Input.is_action_just_pressed("toggle_automatic_trim"):
 		ship.automatic_trim = not ship.automatic_trim
+	if Input.is_action_just_pressed("board"):
+		voyage.board()
+	if Input.is_action_just_pressed("fire"):
+		_display.notice(voyage.bubble.fire())
+	if Input.is_action_just_pressed("change_shot"):
+		voyage.bubble.gunnery.cycle_shot(voyage.bubble.player)
 	_read_view_controls()
 
 
@@ -172,6 +195,45 @@ func _captain_at(screen_point: Vector2) -> Captain:
 	return null
 
 
+## Opens a tab of the port screen: a development aid for screenshots.
+func open_port_tab(tab: int) -> void:
+	_follow_port()
+	if _port_screen != null:
+		_port_screen.open.call_deferred(tab)
+
+
+## The port whose marker is under a point on the screen, or empty.
+func _port_at(screen_point: Vector2) -> Dictionary:
+	for port in voyage.ports:
+		if _to_screen(port.position).distance_to(screen_point) <= CLICK_REACH:
+			return port
+	return {}
+
+
+## Opens the port screen when the ship moors and closes it when the ship casts off.
+func _follow_port() -> void:
+	var moored := not voyage.docked.is_empty()
+	if moored and _port_screen == null:
+		_port_screen = PortScreen.new()
+		_port_screen.voyage = voyage
+		_interface_layer.add_child(_port_screen)
+	elif not moored and _port_screen != null:
+		_port_screen.queue_free()
+		_port_screen = null
+
+
+## Opens the plunder panel while a taken ship lies alongside.
+func _follow_plunder() -> void:
+	var prize := voyage.bubble != null and voyage.bubble.prize() != null
+	if prize and _plunder_screen == null:
+		_plunder_screen = PlunderScreen.new()
+		_plunder_screen.voyage = voyage
+		_interface_layer.add_child(_plunder_screen)
+	elif not prize and _plunder_screen != null:
+		_plunder_screen.queue_free()
+		_plunder_screen = null
+
+
 ## Zooms into a bubble when one opens, back out when it closes, and keeps a wake behind every
 ## ship in it.
 func _follow_bubble() -> void:
@@ -180,6 +242,9 @@ func _follow_bubble() -> void:
 	for wake in _wakes:
 		wake.queue_free()
 	_wakes.clear()
+	if _effects != null:
+		_effects.queue_free()
+		_effects = null
 	if voyage.bubble != null and _bubble == null:
 		_zoom_before_bubble = zoom_index
 		zoom_index = BUBBLE_ZOOM
@@ -194,6 +259,9 @@ func _follow_bubble() -> void:
 			add_child(wake)
 			move_child(wake, 0)
 			_wakes.append(wake)
+		_effects = EffectsView.new()
+		_effects.bubble = _bubble
+		add_child(_effects)
 
 
 ## Inside a bubble the view works in the bubble's own frame, where positions are precise; on
@@ -213,7 +281,7 @@ func _process(delta: float) -> void:
 	var true_wind := voyage.monsoon.velocity_at(_frame() + _focus())
 
 	# The sea under the ship moves past at the ship's real speed, not the world clock's: at an
-	# hour a second it would be a blur, and this shows how the ship is actually sailing. Inside a
+	# world clock it would be a blur, and this shows how the ship is actually sailing. Inside a
 	# bubble it's the bubble's own clock.
 	var motion := voyage.ship.forward() * voyage.ship.speed * delta
 	if voyage.bubble != null:
@@ -247,6 +315,10 @@ func _process(delta: float) -> void:
 	for wake in _wakes:
 		wake.pixels_per_meter = 1.0 / meters_per_pixel
 		wake.origin = _origin()
+	if _effects != null:
+		_effects.pixels_per_meter = 1.0 / meters_per_pixel
+		_effects.origin = _origin()
+		move_child(_effects, get_child_count() - 1)
 	if voyage.bubble != null:
 		_show_bubble_ships(meters_per_pixel)
 	else:

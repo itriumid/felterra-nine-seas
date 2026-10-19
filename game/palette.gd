@@ -29,6 +29,12 @@ const SPAR := Color("6b4a33")
 const SAIL := Color("efe6d2")
 const SAIL_SHADOW := Color("c9bca0")
 
+# Gunnery: smoke thinning as it drifts, the flash of a gun, and the balls themselves.
+const SMOKE := Color("e4e2d8")
+const SMOKE_FADING := Color("b0b4b0")
+const FLASH := Color("ffe9a8")
+const CANNONBALL := Color("2b2b2b")
+
 # Marks
 const BUOY := Color("c8443a")
 const BUOY_LIGHT := Color("f2f2f2")
@@ -43,5 +49,8 @@ const MERCHANT := Color("d9a441")
 
 # Heads-up display, in Rhodonite.
 const PANEL := Color("2b2b2b")
+# Buttons on panels, and a button under the pointer. Off-white text clears 4.5:1 on both.
+const PANEL_RAISED := Color("3a3a3a")
+const PANEL_HOVER := Color("474747")
 const TEXT := Color("f2f2f2")
 const TEXT_MUTED := Color("aaaaaa")
