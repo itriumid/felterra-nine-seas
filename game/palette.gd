@@ -46,6 +46,7 @@ const PLAYER_EDGE := Color("c46475")
 # Other ships' flags.
 const NAVY := Color("4a6fb5")
 const MERCHANT := Color("d9a441")
+const PIRATE := Color("e0604f")
 
 # Heads-up display, in Rhodonite.
 const PANEL := Color("2b2b2b")
