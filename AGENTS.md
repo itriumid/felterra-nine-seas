@@ -75,6 +75,11 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
   step. Anything stepped at the full physics rate works in a local frame (a bubble's `origin`)
   and converts to world positions only at its edges. Tests for motion check the distance
   moved, not just the heading.
+- **Anything that changes what happens next is saved.** New state goes into the matching
+  `to_saved` and `restore` or `from_saved`, and if the save's shape changes, bump
+  `SaveGame.VERSION`. `tests/test_saving.gd` runs a saved voyage and its loaded copy side by
+  side and fails if they drift apart, which is how a forgotten field shows up. Development flags
+  never load or write the real save.
 - **Generated tables:** `simulation/polar_table.gd` (from the sailing model) and
   `simulation/route_table.gd` (from the chart, ports and navigation). Rebuild them with
   `tools/build_polars.gd` and `tools/build_routes.gd`; tests fail while they're stale.
