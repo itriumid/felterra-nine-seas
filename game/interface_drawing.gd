@@ -58,9 +58,21 @@ static func point_of_sail(angle_off_wind: float, speed: float) -> String:
 
 ## A distance the way the display shows it: meters up close, kilometers further out.
 static func distance_text(meters: float) -> String:
-	if meters < 2000.0:
-		return "%d meters" % roundi(meters)
-	return "%d kilometers" % roundi(meters / 1000.0)
+	if meters < 1000.0:
+		return "%d meter%s" % [roundi(meters), "" if roundi(meters) == 1 else "s"]
+	var kilometers := roundi(meters / 1000.0)
+	return "%d kilometer%s" % [kilometers, "" if kilometers == 1 else "s"]
+
+
+## An amount of money: whole reals, with thousands separated.
+static func reals_text(amount: float) -> String:
+	var whole := str(roundi(absf(amount)))
+	var grouped := ""
+	while whole.length() > 3:
+		grouped = "," + whole.right(3) + grouped
+		whole = whole.left(whole.length() - 3)
+	var minus := "-" if amount < -0.5 else ""
+	return "%s%s%s reals" % [minus, whole, grouped]
 
 
 ## A compass bearing the way navigators write it: three digits, 000 to 359.

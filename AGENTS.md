@@ -75,6 +75,10 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
   step. Anything stepped at the full physics rate works in a local frame (a bubble's `origin`)
   and converts to world positions only at its edges. Tests for motion check the distance
   moved, not just the heading.
+- **Generated tables:** `simulation/polar_table.gd` (from the sailing model) and
+  `simulation/route_table.gd` (from the chart, ports and navigation). Rebuild them with
+  `tools/build_polars.gd` and `tools/build_routes.gd`; tests fail while they're stale.
+- **Run long probes and tools under `timeout`.** A stuck search pegs a core until killed.
 - **The chart (`world/nusantara.png`) is generated.** Change `tools/build_world_map.py` and
   rebuild it; never edit the image. Its constants must match `simulation/chart.gd`.
 - **File names are lowercase snake_case.** macOS ignores case and Linux doesn't, so a
@@ -83,7 +87,7 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
 - **Pixels stay one size.** Zoom by changing pixels per meter, never by scaling the camera or a
   node, and draw on the low-resolution screen.
 - **To see the game without playing it**, run
-  `godot --path . -- --screenshot=<path>.png --screenshot-after=8` (add `--bubble`, `--brig`,
-  `--help-overlay`, `--zoom=<level>` or `--day=<day of the year>`). It opens a window, saves one
+  `godot --path . -- --screenshot=<path>.png --screenshot-after=8` (add `--bubble`, `--plunder`, `--battle`, `--brig`,
+  `--help-overlay`, `--zoom=<level>`, `--day=<day of the year>` or `--port-tab=<1 or 2>`). It opens a window, saves one
   640 by 360 frame, and quits. The window takes keyboard focus, so warn whoever is at the
   machine first.

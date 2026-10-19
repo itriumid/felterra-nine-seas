@@ -16,6 +16,9 @@ const OPEN_RANGE := 3000.0
 const CLOSE_RANGE := 6000.0
 ## How bouncy a collision between hulls is: wooden ships barely bounce.
 const RESTITUTION := 0.2
+## Hull lost per joule of impact per kilogram of ship: two ships meeting at 3 meters a second
+## head on each lose a fifth of their hull; a gentle bump alongside, almost nothing.
+const DAMAGE_PER_SPECIFIC_ENERGY := 0.022
 
 var chart: Chart
 ## The world position of the bubble's own origin. Ships inside are positioned relative to it:
@@ -31,6 +34,47 @@ var captains: Array[Captain] = []
 var ships: Array[Ship] = []
 ## Seconds of game time since the bubble opened.
 var time := 0.0
+
+enum Boarding { NONE, FIGHTING, TAKEN, REPELLED }
+
+## Grapples reach this far between hulls, and only hold if the ships are moving together.
+const GRAPPLE_REACH := 6.0
+const BOARDING_SPEED := 1.5
+## Lanchester's square law: each side loses this share of the other side's fighters every
+## second, so numbers count twice over and a big crew wins fast and cheaply.
+const FIGHTING_RATE := 0.04
+## Defenders fight from their own deck, behind their own bulwarks.
+const DEFENDERS_EDGE := 1.2
+## Merchant sailors weren't paid to die for the owners' cargo: outnumbered this badly, they
+## strike their colors at once.
+const SURRENDER_ODDS := 2.0
+## Boarders who fall below this share of those who went over give up and cut the grapples.
+const GIVE_UP_SHARE := 0.4
+const KNOTS_PER_METER_PER_SECOND := 1.943844
+
+## The guns of every ship in here, and the balls in flight.
+var gunnery := Gunnery.new()
+## How badly outnumbered a merchant crew must be to strike at once; less for a feared captain.
+var surrender_odds := SURRENDER_ODDS
+## What the player did in here that the world will remember: event names for the voyage's
+## reckoning of renown and honor, taken and cleared by the voyage.
+var deeds: Array[String] = []
+## Ships sunk in here, by captain; and whether the player's own went down.
+var sunk: Array[Captain] = []
+var player_sunk := false
+## Within this range a navy ship turns to bring its broadside to bear; closer than this it
+## bears away a little, to keep its guns clear and not be boarded.
+const BROADSIDE_RANGE := 350.0
+const CLOSEST_RANGE := 90.0
+
+## The ship the player has grappled, by index into ships, or -1; and how the fight is going.
+var grappled := -1
+var boarding := Boarding.NONE
+var _boarders_at_start := 0
+var _attackers := 0.0
+var _defenders := 0.0
+var _offset := Vector2.ZERO
+var _heading_offset := 0.0
 ## Impacts so far, each {"ships": [a, b], "speed": closing speed in meters per second}.
 var collisions: Array[Dictionary] = []
 
@@ -60,6 +104,10 @@ func _full_ship(map_ship: MapShip) -> Ship:
 	ship.velocity = map_ship.forward() * map_ship.speed
 	ship.sail_ordered = map_ship.sail_set
 	ship.sail_set = map_ship.sail_set
+	ship.cargo_mass = map_ship.carried_mass()
+	ship.fouling = map_ship.fouling
+	ship.hull = map_ship.hull
+	ship.rigging = map_ship.rigging
 	ship.trim_instantly(wind.velocity_at(ship.position))
 	return ship
 
@@ -74,7 +122,8 @@ func step() -> void:
 	time += STEP
 	wind.advance(STEP)
 	for index in ships.size():
-		_steer(captains[index], ships[index])
+		if index != grappled:
+			_steer(captains[index], ships[index])
 	for ship in all_ships():
 		var before := ship.position
 		ship.step(STEP, wind.velocity_at(ship.position))
@@ -83,10 +132,222 @@ func step() -> void:
 			ship.position = before
 			ship.velocity = Vector2.ZERO
 			ship.yaw_rate = 0.0
+	if grappled >= 0:
+		_hold_alongside()
+		_fight()
 	_collide()
+	gunnery.advance(STEP, all_ships(), _hit)
+	for index in ships.size():
+		_lay_guns(index)
+	_sink_the_sunk()
+
+
+## The ship the player could grapple right now, by index, or -1: within reach of the hull and
+## moving with the player.
+func boardable() -> int:
+	for index in ships.size():
+		var other := ships[index]
+		if captains[index].struck:
+			continue
+		var reach := (player.design.beam + other.design.beam) / 2.0 + GRAPPLE_REACH
+		var closest := INF
+		for point_a in _hull_circles(player):
+			for point_b in _hull_circles(other):
+				closest = minf(closest, point_a.distance_to(point_b))
+		if closest <= reach and (player.velocity - other.velocity).length() <= BOARDING_SPEED:
+			return index
+	return -1
+
+
+## Why the player can't board yet, or an empty string if they can.
+func boarding_hint() -> String:
+	if boardable() >= 0:
+		return ""
+	var nearest := INF
+	var speed := 0.0
+	for index in ships.size():
+		var distance := ships[index].position.distance_to(player.position)
+		if distance < nearest:
+			nearest = distance
+			speed = (player.velocity - ships[index].velocity).length()
+	if nearest > 60.0:
+		return "Close to within a few meters to board"
+	return "Match her speed to board: closing at %.1f knots" % (speed * KNOTS_PER_METER_PER_SECOND)
+
+
+## Throws the grapples and sends the boarders over. Merchants outnumbered badly enough strike
+## at once.
+func board() -> String:
+	var index := boardable()
+	if index < 0:
+		return boarding_hint()
+	grappled = index
+	var other := ships[index]
+	_offset = (other.position - player.position).rotated(-player.heading)
+	_heading_offset = other.heading - player.heading
+	# Everyone who can fight goes over or stands to repel them; nobody's minding the sails.
+	player.sail_ordered = 0.0
+	other.sail_ordered = 0.0
+	_attackers = player_map_ship.crew
+	_defenders = captains[index].ship.crew
+	_boarders_at_start = player_map_ship.crew
+	boarding = Boarding.FIGHTING
+	_provoke(captains[index])
+	if captains[index].role == Captain.Role.MERCHANT and _attackers >= _defenders * surrender_odds:
+		_take(captains[index])
+	return ""
+
+
+## Cuts the grapples. After a capture, the plundered ship goes on its way.
+func cast_off() -> void:
+	grappled = -1
+	boarding = Boarding.NONE
+
+
+## The plundered ship's hold, while it lies alongside.
+func prize() -> MapShip:
+	if grappled < 0 or boarding != Boarding.TAKEN:
+		return null
+	return captains[grappled].ship
+
+
+## Fires the player's broadside on whichever side faces the nearest other ship, laid for its
+## range. Returns why not, if it can't.
+func fire() -> String:
+	if grappled >= 0:
+		return "Not while you're lashed alongside"
+	if player_map_ship.guns < 2:
+		return "You have no broadside to fire"
+	var target := _nearest_to_player()
+	var side := 1
+	var aim := player.position + player.starboard() * 300.0
+	if target >= 0:
+		side = Gunnery.side_toward(player, ships[target].position)
+		aim = ships[target].position
+	if gunnery.reload_left(player, side) > 0.0:
+		return "The %s guns are still loading" % ("starboard" if side > 0 else "port")
+	gunnery.fire(player, player_map_ship, side, aim)
+	for index in ships.size():
+		if Gunnery.bears(player, side, ships[index].position):
+			_provoke(captains[index])
+	return ""
+
+
+func _nearest_to_player() -> int:
+	var nearest := -1
+	var nearest_distance := INF
+	for index in ships.size():
+		var distance := ships[index].position.distance_to(player.position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = index
+	return nearest
+
+
+## The first time the player turns on a ship, it fights back, and the world remembers.
+func _provoke(captain: Captain) -> void:
+	if captain.hostile:
+		return
+	captain.hostile = true
+	deeds.append("attacked_navy" if captain.role == Captain.Role.NAVY else "attacked_merchant")
+
+
+func _take(captain: Captain) -> void:
+	boarding = Boarding.TAKEN
+	captain.struck = true
+	captain.hostile = false
+	deeds.append("captured_navy" if captain.role == Captain.Role.NAVY else "captured_merchant")
+
+
+## A captain's gunners fire whenever a loaded side bears on the player, if they're at war with
+## the player: the navy always is once honor is gone, a merchant once it's been attacked.
+func _lay_guns(index: int) -> void:
+	var captain := captains[index]
+	var ship := ships[index]
+	if not captain.hostile or captain.struck or index == grappled:
+		return
+	var distance := ship.position.distance_to(player.position)
+	if distance > Gunnery.RANGE[Gunnery.Shot.ROUND] * 0.8:
+		return
+	var side := Gunnery.side_toward(ship, player.position)
+	if Gunnery.bears(ship, side, player.position):
+		gunnery.fire(ship, captain.ship, side, player.position)
+
+
+## What one ball does to the ship it strikes. Heavier ships take less from each.
+func _hit(target: Ship, kind: int) -> void:
+	var map_ship := _map_ship_of(target)
+	var scale := Gunnery.REFERENCE_MASS / target.mass()
+	match kind:
+		Gunnery.Shot.ROUND:
+			target.hull = maxf(target.hull - Gunnery.HULL_PER_ROUND_SHOT * scale, 0.0)
+			if gunnery.random.randf() < Gunnery.CREW_KILLED_PER_ROUND_SHOT:
+				map_ship.crew = maxi(map_ship.crew - 1, 0)
+		Gunnery.Shot.CHAIN:
+			target.rigging = maxf(target.rigging - Gunnery.RIGGING_PER_CHAIN_SHOT * sqrt(scale), 0.0)
+		Gunnery.Shot.GRAPE:
+			if gunnery.random.randf() < Gunnery.CREW_KILLED_PER_GRAPE:
+				map_ship.crew = maxi(map_ship.crew - 1, 0)
+
+
+func _map_ship_of(ship: Ship) -> MapShip:
+	if ship == player:
+		return player_map_ship
+	return captains[ships.find(ship)].ship
+
+
+## Ships with no hull left go down, with everything in them.
+func _sink_the_sunk() -> void:
+	if player.hull <= 0.0:
+		player_sunk = true
+	for index in range(ships.size() - 1, -1, -1):
+		if ships[index].hull > 0.0:
+			continue
+		var captain := captains[index]
+		deeds.append("sank_navy" if captain.role == Captain.Role.NAVY else "sank_merchant")
+		sunk.append(captain)
+		gunnery.events.append({"kind": "sinking", "position": ships[index].position, "direction": ships[index].forward()})
+		if index == grappled:
+			grappled = -1
+			boarding = Boarding.NONE
+		elif index < grappled:
+			grappled -= 1
+		ships.remove_at(index)
+		captains.remove_at(index)
+
+
+func fighters() -> Vector2i:
+	return Vector2i(ceili(_attackers), ceili(_defenders))
+
+
+## The lashed ships move as one.
+func _hold_alongside() -> void:
+	var other := ships[grappled]
+	other.position = player.position + _offset.rotated(player.heading)
+	other.heading = player.heading + _heading_offset
+	other.velocity = player.velocity
+	other.yaw_rate = player.yaw_rate
+
+
+func _fight() -> void:
+	if boarding != Boarding.FIGHTING:
+		return
+	var attackers_before := _attackers
+	_attackers = maxf(_attackers - FIGHTING_RATE * _defenders * DEFENDERS_EDGE * STEP, 0.0)
+	_defenders = maxf(_defenders - FIGHTING_RATE * attackers_before * STEP, 0.0)
+	player_map_ship.crew = ceili(_attackers)
+	captains[grappled].ship.crew = ceili(_defenders)
+	var surrendered := captains[grappled].role == Captain.Role.MERCHANT and _attackers >= _defenders * surrender_odds
+	if _defenders < 0.5 or surrendered:
+		_take(captains[grappled])
+	elif _attackers < _boarders_at_start * GIVE_UP_SHARE:
+		boarding = Boarding.REPELLED
+		grappled = -1
 
 
 func should_close() -> bool:
+	if player_sunk:
+		return true
 	for ship in ships:
 		if ship.position.distance_to(player.position) < CLOSE_RANGE:
 			return false
@@ -107,6 +368,8 @@ func _return(ship: Ship, map_ship: MapShip) -> void:
 	map_ship.heading = ship.heading
 	map_ship.speed = maxf(ship.forward_speed(), 0.0)
 	map_ship.sail_set = ship.sail_ordered
+	map_ship.hull = ship.hull
+	map_ship.rigging = ship.rigging
 
 
 ## A captain's hands on the helm: merchants run from the player, navy ships close with them.
@@ -114,6 +377,14 @@ func _return(ship: Ship, map_ship: MapShip) -> void:
 func _steer(captain: Captain, ship: Ship) -> void:
 	var to_player := player.position - ship.position
 	var wanted := to_player if captain.role == Captain.Role.NAVY else -to_player
+	if captain.role == Captain.Role.NAVY and captain.hostile and to_player.length() < BROADSIDE_RANGE:
+		# Bring the broadside to bear: put the player on the beam, on whichever side is nearer
+		# the present heading; bear away a little when too close.
+		var beam_a := to_player.rotated(PI / 2.0)
+		var beam_b := to_player.rotated(-PI / 2.0)
+		wanted = beam_a if absf(ship.forward().angle_to(beam_a)) < absf(ship.forward().angle_to(beam_b)) else beam_b
+		if to_player.length() < CLOSEST_RANGE:
+			wanted = wanted.rotated(-signf(wanted.angle_to(to_player)) * 0.4)
 	var true_wind := wind.velocity_at(ship.position)
 	var wind_from := -true_wind.normalized()
 	var closest := deg_to_rad(Polar.best_upwind_angle(ship.design.id, true_wind.length()) + 5.0)
@@ -138,6 +409,8 @@ func _collide() -> void:
 
 
 func _collide_pair(a: Ship, b: Ship) -> void:
+	if grappled >= 0 and ((a == player and b == ships[grappled]) or (b == player and a == ships[grappled])):
+		return  # Lashed together: fenders and grapples hold them a hull's width apart.
 	var reach := (a.design.length_overall + b.design.length_overall) / 2.0
 	if a.position.distance_to(b.position) > reach:
 		return
@@ -150,8 +423,8 @@ func _collide_pair(a: Ship, b: Ship) -> void:
 			if distance >= radius_a + radius_b or distance == 0.0:
 				continue
 			var normal := between / distance
-			var mass_a := a.design.mass
-			var mass_b := b.design.mass
+			var mass_a := a.mass()
+			var mass_b := b.mass()
 			var overlap := radius_a + radius_b - distance
 			a.position -= normal * overlap * mass_b / (mass_a + mass_b)
 			b.position += normal * overlap * mass_a / (mass_a + mass_b)
@@ -163,6 +436,10 @@ func _collide_pair(a: Ship, b: Ship) -> void:
 			b.velocity += normal * impulse / mass_b
 			a.yaw_rate -= (point_a - a.position).cross(normal * impulse) / _inertia(a)
 			b.yaw_rate += (point_b - b.position).cross(normal * impulse) / _inertia(b)
+			# Both hulls take the energy of the impact, shared by how much it shook each.
+			var energy := 0.5 * closing * closing * mass_a * mass_b / (mass_a + mass_b)
+			a.hull = maxf(a.hull - energy / mass_a * DAMAGE_PER_SPECIFIC_ENERGY, 0.0)
+			b.hull = maxf(b.hull - energy / mass_b * DAMAGE_PER_SPECIFIC_ENERGY, 0.0)
 			collisions.append({"ships": [a, b], "speed": closing})
 			return
 
@@ -173,4 +450,4 @@ static func _hull_circles(ship: Ship) -> Array[Vector2]:
 
 
 static func _inertia(ship: Ship) -> float:
-	return ship.design.mass * pow(ship.design.length_overall / 4.0, 2.0)
+	return ship.mass() * pow(ship.design.length_overall / 4.0, 2.0)

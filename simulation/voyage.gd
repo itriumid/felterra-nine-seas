@@ -1,7 +1,11 @@
 class_name Voyage
 extends RefCounted
 ## Everything about the player's game that outlives a screen: the date, the winds, the chart,
-## the ports and the player's ship.
+## the ports and their markets, the player's ship and purse.
+##
+## Everything the player does goes through a command here (set a course, buy, hire, set
+## sail), so a server can run the same voyage for every player. Commands that can be refused
+## return the reason, or an empty string when they succeed.
 
 ## The game starts at dawn on the 15th of January, in the steady northeast monsoon.
 const START_DAY := 14
@@ -23,6 +27,61 @@ var captains: Array[Captain] = []
 var autopilot: Captain
 ## The battle bubble the player is in, or null on the open map.
 var bubble: Bubble
+## Reals in the player's purse.
+var purse := STARTING_PURSE
+## Each port's market and the sailors in its taverns looking for a berth, by port name.
+var markets := {}
+var taverns := {}
+## The port the player's ship is moored in, or empty at sea.
+var docked := {}
+var _unpaid_days := 0.0
+## How widely the player is known, from 0, and how they're known: honorable above 0, cruel
+## below, from -100 to 100.
+var renown := 0.0
+var honor := 0.0
+## The latest thing worth telling the player, and how many game seconds it has been shown.
+var news := ""
+var news_age := 0.0
+
+## What the world makes of each deed, as [renown, honor].
+const DEEDS := {
+	"attacked_merchant": [0.0, -5.0],
+	"attacked_navy": [0.0, -10.0],
+	"captured_merchant": [5.0, 0.0],
+	"captured_navy": [15.0, 0.0],
+	"sank_merchant": [3.0, -15.0],
+	"sank_navy": [10.0, -5.0],
+	"shipwrecked": [-10.0, 0.0],
+}
+## Below this honor the navy hunts the player.
+const HUNTED_BELOW := -20.0
+## Navy ships within this many meters join the hunt.
+const HUNT_RANGE := 120000.0
+## Honor drifts back toward nothing as deeds are forgotten, this much a day.
+const FORGETTING := 0.2
+## Renown from trade: one point per this many reals of goods sold.
+const REALS_PER_RENOWN := 5000.0
+
+const STARTING_PURSE := 1500.0
+const STARTING_CREW := 12
+const STARTING_GUNS := 4
+## What a shipyard pays for a gun taken off, against what it charges for one.
+const GUN_RESALE_SHARE := 0.5
+## A sailor's pay, in reals a day, and the bounty for signing on.
+const WAGE := 0.5
+const SIGNING_BOUNTY := 5.0
+## How many sailors a tavern can have looking for a berth, and how many turn up a day.
+const TAVERN_LIMIT := 40
+const SAILORS_A_DAY := 4.0
+## A ship within this many meters of a port, sails furled and all but stopped, comes in and
+## moors.
+const DOCKING_RANGE := 3000.0
+const DOCKING_SPEED := 0.5
+## What a shipyard charges: to make good a whole hull, as a share of the ship's price; to haul
+## the ship out and scrape its bottom; and what it gives for a ship traded in, when sound.
+const REPAIR_SHARE := 0.3
+const SCRAPING_SHARE := 0.02
+const TRADE_IN_SHARE := 0.6
 
 const MERCHANTS := 14
 ## Navy squadrons and the ports each patrols between.
@@ -37,10 +96,33 @@ const NAVY_PATROLS: Array[Array] = [
 func _init(seed_value := 39) -> void:
 	random.seed = seed_value
 	ship = MapShip.new(designs[design_index])
-	ship.position = port_named(START_PORT).position
-	# Head away from the land, out to sea.
-	ship.heading = Vector2.UP.angle()
+	ship.crew = STARTING_CREW
+	ship.guns = STARTING_GUNS
+	var distances := _sailing_distances()
+	for port in ports:
+		var prices := {}
+		for id in Goods.ids():
+			prices[id] = Market.regional_price(id, port, ports, distances)
+		markets[port.name] = Market.new(prices)
+		taverns[port.name] = random.randi_range(10, TAVERN_LIMIT)
+	dock(port_named(START_PORT))
 	_spawn_traffic()
+
+
+## Meters by sea between every pair of ports, along their routes, by "port>port" key.
+func _sailing_distances() -> Dictionary:
+	var distances := {}
+	for from in ports:
+		for to in ports:
+			if from == to:
+				continue
+			var length := 0.0
+			var previous: Vector2 = from.position
+			for point in navigation.route(from.position, to.position):
+				length += previous.distance_to(point)
+				previous = point
+			distances["%s>%s" % [from.name, to.name]] = length
+	return distances
 
 
 ## Merchants spread across the ports, navy squadrons on their stations, each leaving port at a
@@ -93,9 +175,19 @@ func nearest_port() -> Dictionary:
 	return nearest
 
 
+## Has the crew sail to a port and moor there.
+func sail_to_port(port: Dictionary) -> bool:
+	if not set_course(port.position):
+		return false
+	autopilot.destination = port
+	return true
+
+
 ## Has the crew sail the player's ship to a point, around land and against the wind if need
 ## be. Returns false if there's no way there by sea.
 func set_course(target: Vector2) -> bool:
+	if not docked.is_empty():
+		undock()
 	if chart.is_land(target):
 		target = chart.nearest_water(target, 3)
 		if chart.is_land(target):
@@ -111,6 +203,8 @@ func set_course(target: Vector2) -> bool:
 
 ## Has the crew give chase to another ship. Meeting it opens a bubble.
 func chase(captain: Captain) -> void:
+	if not docked.is_empty():
+		undock()
 	var crew := Captain.new(Captain.Role.MERCHANT, ship.design)
 	crew.ship = ship
 	crew.quarry = captain
@@ -121,6 +215,8 @@ func take_helm() -> void:
 	autopilot = null
 
 
+## Swaps the player's ship for the next class, for free. A development aid; players buy ships at
+## a shipyard.
 func switch_ship() -> void:
 	autopilot = null
 	design_index = (design_index + 1) % designs.size()
@@ -128,19 +224,32 @@ func switch_ship() -> void:
 	replacement.position = ship.position
 	replacement.heading = ship.heading
 	replacement.sail_set = ship.sail_set
+	replacement.hold = ship.hold
+	replacement.crew = maxi(ship.crew, replacement.design.crew_minimum)
 	ship = replacement
 
 
 func advance(delta: float) -> void:
 	calendar.advance(delta)
 	var wind := monsoon.velocity_at(ship.position)
-	if bubble != null:
-		pass  # The player's ship is in the bubble; the world sails on without it.
+	if bubble != null or not docked.is_empty():
+		pass  # In a bubble, or moored: the world sails on without the player's ship.
 	elif autopilot != null:
 		if autopilot.navigate(delta, wind, self) and autopilot.quarry == null:
+			var arrived := autopilot.destination
 			autopilot = null
+			if arrived.has("name"):
+				dock(arrived)
 	else:
 		ship.step(delta, wind, chart)
+		_check_for_mooring()
+	for market in markets.values():
+		market.advance(delta)
+	_fill_taverns(delta)
+	_pay_crew(delta)
+	_forget(delta)
+	_send_the_navy()
+	news_age += delta
 	for captain in captains:
 		captain.update(delta, monsoon.velocity_at(captain.ship.position), self)
 	if bubble == null:
@@ -150,9 +259,15 @@ func advance(delta: float) -> void:
 ## Opens a bubble when the ship the player is chasing comes within range, taking in every other
 ## ship that close too.
 func _check_for_meeting() -> void:
-	if autopilot == null or autopilot.quarry == null:
+	var chased := autopilot != null and autopilot.quarry != null \
+		and ship.position.distance_to(autopilot.quarry.ship.position) <= Bubble.OPEN_RANGE
+	var hunted := false
+	for captain in captains:
+		if captain.hunting and captain.at_sea() and captain.ship.position.distance_to(ship.position) <= Bubble.OPEN_RANGE:
+			hunted = true
+	if not chased and not hunted:
 		return
-	if ship.position.distance_to(autopilot.quarry.ship.position) > Bubble.OPEN_RANGE:
+	if not docked.is_empty():
 		return
 	var met: Array[Captain] = []
 	for captain in captains:
@@ -164,11 +279,342 @@ func _check_for_meeting() -> void:
 		return
 	autopilot = null
 	bubble = Bubble.around(self, met)
+	bubble.surrender_odds = Bubble.SURRENDER_ODDS / fear()
+	if hunted:
+		tell("The navy has caught up with you!")
+
+
+func board() -> String:
+	if bubble == null:
+		return "There's no ship to board"
+	return bubble.board()
+
+
+## Takes goods from a plundered ship into the hold, as much as there is and the hold takes.
+func plunder(id: String, tons: int) -> String:
+	if bubble == null or bubble.prize() == null:
+		return "There's nothing to plunder"
+	var prize := bubble.prize()
+	var taking := mini(tons, prize.hold.get(id, 0))
+	if taking > ship.free_tons():
+		return "Not enough room in the hold"
+	if taking <= 0:
+		return ""
+	prize.hold[id] -= taking
+	if prize.hold[id] == 0:
+		prize.hold.erase(id)
+	ship.hold[id] = ship.hold.get(id, 0) + taking
+	return ""
+
+
+func cast_off() -> void:
+	if bubble != null:
+		bubble.cast_off()
 
 
 ## One step of the bubble's clock, closing it when the ships have drawn apart.
 func step_bubble() -> void:
 	bubble.step()
+	for deed in bubble.deeds:
+		reckon(deed)
+	bubble.deeds.clear()
+	for captain in bubble.sunk:
+		captains.erase(captain)
+	bubble.sunk.clear()
+	if bubble.player_sunk:
+		_shipwreck()
+		return
 	if bubble.should_close():
 		bubble.close()
 		bubble = null
+
+
+# Renown and honor.
+
+## Adds a deed to the player's reputation.
+func reckon(deed: String) -> void:
+	var weight: Array = DEEDS[deed]
+	renown = maxf(renown + weight[0], 0.0)
+	honor = clampf(honor + weight[1], -100.0, 100.0)
+
+
+## How the world speaks of the player.
+func reputation_title() -> String:
+	if renown < 10.0:
+		return "Unknown"
+	var famous := renown >= 50.0
+	if honor >= 20.0:
+		return "Celebrated" if famous else "Honorable"
+	if honor <= HUNTED_BELOW:
+		return "Notorious" if famous else "Feared"
+	return "Famous" if famous else "Known"
+
+
+## How much a reputation makes merchants quail: renown counts three times over for a captain
+## known for cruelty.
+func fear() -> float:
+	return 1.0 + renown / (50.0 if honor < 0.0 else 150.0)
+
+
+func hunted() -> bool:
+	return honor <= HUNTED_BELOW
+
+
+func tell(message: String) -> void:
+	news = message
+	news_age = 0.0
+
+
+func _forget(delta: float) -> void:
+	honor = move_toward(honor, 0.0, FORGETTING * delta / Calendar.SECONDS_PER_DAY)
+
+
+## Without honor, every navy ship near enough comes after the player; with it back, they stand
+## down and return to their stations.
+func _send_the_navy() -> void:
+	for captain in captains:
+		if captain.role != Captain.Role.NAVY or captain.in_bubble:
+			continue
+		if hunted() and captain.at_sea() and captain.ship.position.distance_to(ship.position) < HUNT_RANGE:
+			if not captain.hunting:
+				captain.hunting = true
+				captain.hostile = true
+				tell("Navy ships are hunting you")
+		elif captain.hunting and not hunted():
+			captain.hunting = false
+			captain.hostile = false
+			captain.replan = true
+
+
+## The player's ship has gone down. The survivors are picked up and landed at the nearest port,
+## where the shipyard gives them an old sloop to start again; cargo and guns are lost.
+func _shipwreck() -> void:
+	var survivors := maxi(ship.crew / 3, 4)
+	var port := nearest_port()
+	bubble.close()
+	bubble = null
+	var wreck := MapShip.new(ShipDesign.sloop())
+	wreck.crew = mini(survivors, wreck.design.crew_maximum)
+	wreck.hull = 0.6
+	ship = wreck
+	design_index = 0
+	dock(port)
+	reckon("shipwrecked")
+	tell("Your ship went down. The survivors were landed at %s." % port.name)
+
+
+
+# Ports.
+
+## Comes in and moors: the ship stops at the port, sails furled.
+func dock(port: Dictionary) -> void:
+	docked = port
+	autopilot = null
+	ship.position = port.position
+	ship.speed = 0.0
+	ship.sail_set = 0.0
+
+
+## Casts off and makes sail, heading away from the land.
+func undock() -> void:
+	if docked.is_empty():
+		return
+	docked = {}
+	ship.sail_set = 1.0
+	var reach := 1000.0
+	var away := Vector2(
+		chart.signed_distance(ship.position + Vector2(reach, 0.0)) - chart.signed_distance(ship.position - Vector2(reach, 0.0)),
+		chart.signed_distance(ship.position + Vector2(0.0, reach)) - chart.signed_distance(ship.position - Vector2(0.0, reach)))
+	if away.length_squared() > 0.0:
+		ship.heading = away.angle()
+
+
+func market() -> Market:
+	return markets.get(docked.get("name", ""), null)
+
+
+func buy(id: String, tons: int) -> String:
+	if docked.is_empty():
+		return "You can only trade in port"
+	var port_market := market()
+	if tons <= 0:
+		return ""
+	if tons > ship.free_tons():
+		return "Not enough room in the hold"
+	if tons > floori(port_market.stock[id]):
+		return "The port hasn't that much to sell"
+	var cost := port_market.cost_to_buy(id, tons)
+	if cost > purse:
+		return "Not enough reals"
+	purse -= cost
+	port_market.take(id, tons)
+	ship.hold[id] = ship.hold.get(id, 0) + tons
+	return ""
+
+
+func sell(id: String, tons: int) -> String:
+	if docked.is_empty():
+		return "You can only trade in port"
+	if tons <= 0:
+		return ""
+	if tons > ship.hold.get(id, 0):
+		return "You haven't that much aboard"
+	var port_market := market()
+	var proceeds := port_market.proceeds_from_selling(id, tons)
+	purse += proceeds
+	renown += proceeds / REALS_PER_RENOWN
+	port_market.put(id, tons)
+	ship.hold[id] -= tons
+	if ship.hold[id] == 0:
+		ship.hold.erase(id)
+	return ""
+
+
+func sailors_in_tavern() -> int:
+	return taverns.get(docked.get("name", ""), 0)
+
+
+func hire(count: int) -> String:
+	if docked.is_empty():
+		return "Sailors sign on in port"
+	if count > sailors_in_tavern():
+		return "Not that many sailors looking for a berth"
+	if ship.crew + count > ship.design.crew_maximum:
+		return "No room to berth them"
+	if count * SIGNING_BOUNTY > purse:
+		return "Not enough reals for their bounty"
+	purse -= count * SIGNING_BOUNTY
+	taverns[docked.name] -= count
+	ship.crew += count
+	return ""
+
+
+func dismiss(count: int) -> String:
+	if docked.is_empty():
+		return "Sailors are paid off in port"
+	if count > ship.crew:
+		return "You haven't that many sailors"
+	ship.crew -= count
+	taverns[docked.name] = mini(taverns[docked.name] + count, TAVERN_LIMIT)
+	return ""
+
+
+func repair_cost() -> float:
+	return ((1.0 - ship.hull) + (1.0 - ship.rigging) * 0.5) * ship.design.price * REPAIR_SHARE
+
+
+## Makes good the hull and the rigging.
+func repair() -> String:
+	if docked.is_empty():
+		return "Repairs are done in port"
+	if repair_cost() > purse:
+		return "Not enough reals"
+	purse -= repair_cost()
+	ship.hull = 1.0
+	ship.rigging = 1.0
+	return ""
+
+
+func buy_guns(count: int) -> String:
+	if docked.is_empty():
+		return "Guns are sold in port"
+	if ship.guns + count > ship.design.gun_ports:
+		return "She hasn't the gun ports"
+	if count * ShipDesign.GUN_PRICE > purse:
+		return "Not enough reals"
+	purse -= count * ShipDesign.GUN_PRICE
+	ship.guns += count
+	return ""
+
+
+func sell_guns(count: int) -> String:
+	if docked.is_empty():
+		return "Guns are sold in port"
+	if count > ship.guns:
+		return "You haven't that many guns"
+	purse += count * ShipDesign.GUN_PRICE * GUN_RESALE_SHARE
+	ship.guns -= count
+	return ""
+
+
+func scraping_cost() -> float:
+	return ship.design.price * SCRAPING_SHARE
+
+
+## Hauls the ship out and scrapes the barnacles off its bottom.
+func scrape() -> String:
+	if docked.is_empty():
+		return "Ships are hauled out in port"
+	if scraping_cost() > purse:
+		return "Not enough reals"
+	purse -= scraping_cost()
+	ship.fouling = 0.0
+	return ""
+
+
+func trade_in_value() -> float:
+	return ship.design.price * TRADE_IN_SHARE * ship.hull
+
+
+func cost_of_ship(design: ShipDesign) -> float:
+	return design.price - trade_in_value()
+
+
+## Trades the ship in for another class, keeping the cargo and the crew.
+func buy_ship(design: ShipDesign) -> String:
+	if docked.is_empty():
+		return "Ships are sold in port"
+	if design.id == ship.design.id:
+		return "That's the ship you have"
+	if ship.cargo_tons() > design.cargo_capacity:
+		return "Your cargo won't fit in her hold"
+	if ship.crew > design.crew_maximum:
+		return "She can't berth your crew"
+	if ship.guns > design.gun_ports:
+		return "She hasn't the gun ports for your guns"
+	if cost_of_ship(design) > purse:
+		return "Not enough reals"
+	purse -= cost_of_ship(design)
+	var replacement := MapShip.new(design)
+	replacement.position = ship.position
+	replacement.heading = ship.heading
+	replacement.sail_set = ship.sail_set
+	replacement.hold = ship.hold
+	replacement.crew = ship.crew
+	replacement.guns = ship.guns
+	ship = replacement
+	design_index = designs.find_custom(func(each: ShipDesign) -> bool: return each.id == design.id)
+	return ""
+
+
+## Moors the ship when it has come into a harbor, furled its sails and stopped.
+func _check_for_mooring() -> void:
+	if ship.sail_set > 0.0 or ship.speed > DOCKING_SPEED:
+		return
+	for port in ports:
+		if ship.position.distance_to(port.position) <= DOCKING_RANGE:
+			dock(port)
+			return
+
+
+func _fill_taverns(delta: float) -> void:
+	# A famous captain draws sailors looking for a berth.
+	var arriving := SAILORS_A_DAY * (1.0 + renown / 50.0) * delta / Calendar.SECONDS_PER_DAY
+	for port_name in taverns:
+		# Sailors come in whole; a fractional arrival is a chance of one.
+		if random.randf() < arriving:
+			taverns[port_name] = mini(taverns[port_name] + 1, TAVERN_LIMIT)
+
+
+## Wages fall due every day. Unpaid sailors desert, one a day.
+func _pay_crew(delta: float) -> void:
+	var days := delta / Calendar.SECONDS_PER_DAY
+	purse -= ship.crew * WAGE * days
+	if purse >= 0.0:
+		_unpaid_days = 0.0
+		return
+	purse = 0.0
+	_unpaid_days += days
+	while _unpaid_days >= 1.0 and ship.crew > 0:
+		_unpaid_days -= 1.0
+		ship.crew -= 1

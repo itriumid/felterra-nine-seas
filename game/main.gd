@@ -7,7 +7,9 @@ var voyage := Voyage.new()
 # Development aids. --screenshot=<path> saves a frame after --screenshot-after seconds (default
 # 4) and quits; --brig starts in the brig; --help-overlay opens the help; --day=<day of the
 # year> sets the date; --zoom=<level> picks a zoom level, 0 (the whole chart) to 10 (the deck);
-# --bubble starts in a bubble with a merchant brig half a kilometer away.
+# --bubble starts in a bubble with a merchant brig half a kilometer away; --port-tab=<1 or 2>
+# opens the port screen on the shipyard or the tavern; --plunder starts alongside a merchant that
+# has just struck; --battle starts trading broadsides with a navy brig.
 var _screenshot_path := ""
 var _screenshot_after := 4.0
 
@@ -32,12 +34,21 @@ func _ready() -> void:
 			view.zoom_index = argument.trim_prefix("--zoom=").to_int()
 		elif argument == "--bubble":
 			_meet_a_merchant()
+		elif argument == "--plunder":
+			_meet_a_merchant()
+			_take_her()
+		elif argument == "--battle":
+			_meet_a_merchant()
+			_fight_the_navy()
+		elif argument.begins_with("--port-tab="):
+			view.open_port_tab.call_deferred(argument.trim_prefix("--port-tab=").to_int())
 	add_child(view)
 	if show_help:
 		view.show_help()
 
 
 func _meet_a_merchant() -> void:
+	voyage.undock()
 	voyage.ship.position = Chart.position_of(-5.6, 107.2)
 	voyage.ship.speed = 3.0
 	var merchant := Captain.new(Captain.Role.MERCHANT, ShipDesign.brig())
@@ -49,6 +60,31 @@ func _meet_a_merchant() -> void:
 	voyage.captains.append(merchant)
 	voyage.chase(merchant)
 	voyage.advance(1.0)
+
+
+func _fight_the_navy() -> void:
+	var bubble := voyage.bubble
+	var navy: Captain = bubble.captains[0]
+	navy.role = Captain.Role.NAVY
+	navy.ship.guns = 16
+	navy.ship.crew = 90
+	navy.hostile = true
+	voyage.ship.guns = 10
+	voyage.ship.crew = 50
+	bubble.ships[0].position = bubble.player.position + bubble.player.starboard() * 140.0 + bubble.player.forward() * 20.0
+	bubble.ships[0].heading = bubble.player.heading
+	bubble.ships[0].velocity = bubble.player.velocity
+	bubble.fire()
+
+
+func _take_her() -> void:
+	var bubble := voyage.bubble
+	voyage.ship.crew = 40
+	voyage.captains.back().ship.hold = {"spices": 8, "porcelain": 25}
+	bubble.ships[0].position = bubble.player.position + bubble.player.forward().orthogonal() * 9.0
+	bubble.ships[0].heading = bubble.player.heading
+	bubble.ships[0].velocity = bubble.player.velocity
+	voyage.board()
 
 
 func _process(delta: float) -> void:

@@ -57,6 +57,15 @@ var backing_headsails := false
 var sail_angle := 0.0
 ## Positive heels to starboard.
 var heel := 0.0
+## Kilograms of cargo aboard. It weighs the ship down: more inertia, a deeper hull with more
+## drag, and more stability under sail.
+var cargo_mass := 0.0
+## Barnacles and weed on the hull, 0 for a clean bottom. Each unit doubles the hull's friction.
+var fouling := 0.0
+## Soundness of the hull, 1 for new.
+var hull := 1.0
+## Soundness of masts, yards and sails, 1 for new: the share of sail the ship can still carry.
+var rigging := 1.0
 
 # Read by the views and the heads-up display; the simulation recomputes them every step.
 var apparent_wind := Vector2.ZERO
@@ -77,6 +86,16 @@ func _init(ship_design: ShipDesign) -> void:
 
 func forward() -> Vector2:
 	return Vector2.from_angle(heading)
+
+
+## The ship and everything in it, in kilograms.
+func mass() -> float:
+	return design.mass + cargo_mass
+
+
+## How much heavier than empty the ship is; the hull sinks deeper as this grows.
+func _load_ratio() -> float:
+	return mass() / design.mass
 
 
 func starboard() -> Vector2:
@@ -108,7 +127,7 @@ func trim_instantly(true_wind: Vector2) -> void:
 func settle(true_wind: Vector2) -> void:
 	trim_instantly(true_wind)
 	sail_force = _sail_force(sail_angle, true)
-	heel = clampf(sail_force.dot(starboard()) / design.heel_stiffness, -1.2, 1.2)
+	heel = clampf(sail_force.dot(starboard()) / _heel_stiffness(), -1.2, 1.2)
 
 
 func step(delta: float, true_wind: Vector2) -> void:
@@ -142,8 +161,8 @@ func step(delta: float, true_wind: Vector2) -> void:
 	var surge_force := total.dot(ahead) + hull_forward
 	var sway_force := total.dot(side) + hull_sideways
 	var acceleration := (
-		ahead * surge_force / (design.mass * (1.0 + ADDED_MASS_FORWARD))
-		+ side * sway_force / (design.mass * (1.0 + ADDED_MASS_SIDEWAYS))
+		ahead * surge_force / (mass() * (1.0 + ADDED_MASS_FORWARD))
+		+ side * sway_force / (mass() * (1.0 + ADDED_MASS_SIDEWAYS))
 	)
 	velocity += acceleration * delta
 	position += velocity * delta
@@ -153,16 +172,18 @@ func step(delta: float, true_wind: Vector2) -> void:
 	var headsail_torque := (ahead * design.headsail_center).cross(headsail_force)
 	_turn(delta, surge, windage_torque + headsail_torque)
 
-	var heel_target := clampf((sail_force + headsail_force).dot(side) / design.heel_stiffness, -1.2, 1.2)
+	var heel_target := clampf((sail_force + headsail_force).dot(side) / _heel_stiffness(), -1.2, 1.2)
 	heel = lerpf(heel, heel_target, 1.0 - exp(-delta / 1.0))
 
 
 func _turn(delta: float, surge: float, outside_torque: float) -> void:
-	var moment_of_inertia := design.mass * pow(design.length_overall / 4.0, 2.0)
+	var empty_inertia := design.mass * pow(design.length_overall / 4.0, 2.0)
+	var moment_of_inertia := empty_inertia * _load_ratio()
 	var cruising := 0.8 * design.hull_speed()
-	# Damping chosen so the hull settles into a turn in yaw_response seconds at cruising speed,
-	# and rudder authority so the steady turn has the design's radius.
-	var damping := moment_of_inertia / (design.yaw_response * cruising)
+	# Damping chosen so the empty hull settles into a turn in yaw_response seconds at cruising
+	# speed, and rudder authority so the steady turn has the design's radius. Loaded, the same
+	# rudder swings more mass, so the ship answers more slowly.
+	var damping := empty_inertia / (design.yaw_response * cruising)
 	var authority := damping / (design.turning_radius * design.length_overall)
 	var rudder_torque := authority * rudder * surge * absf(surge)
 	# A hull sitting still barely resists a slow turn, so the floor under the speed term is small.
@@ -172,12 +193,19 @@ func _turn(delta: float, surge: float, outside_torque: float) -> void:
 
 
 func _hull_resistance(surge: float) -> float:
-	var friction := 0.5 * WATER_DENSITY * design.wetted_area * HULL_FRICTION * surge * absf(surge)
+	# A deeper hull wets more of its sides; area grows with displaced volume to the two thirds.
+	var wetted_area := design.wetted_area * pow(_load_ratio(), 2.0 / 3.0)
+	var friction := 0.5 * WATER_DENSITY * wetted_area * HULL_FRICTION * (1.0 + fouling) * surge * absf(surge)
 	var ratio := absf(surge) / design.hull_speed()
 	# Below hull speed the bow wave grows with the fourth power of speed; past it the hull is
 	# climbing its own wave and the resistance turns into a wall.
-	var wave := design.mass * GRAVITY * WAVE_RESISTANCE * pow(ratio, 4.0) * pow(maxf(ratio, 1.0), 8.0)
+	var wave := mass() * GRAVITY * WAVE_RESISTANCE * pow(ratio, 4.0) * pow(maxf(ratio, 1.0), 8.0)
 	return friction + wave * signf(surge)
+
+
+## Side force that heels the ship a radian. Cargo low in the hold works like ballast.
+func _heel_stiffness() -> float:
+	return design.heel_stiffness * _load_ratio()
 
 
 ## The side the sails swing to: away from the wind.
@@ -278,8 +306,9 @@ func _sail_force(angle: float, record: bool, held_aback := false) -> Vector2:
 		luffing = 1.0 if is_luffing else clampf(1.0 - absf(attack) / deg_to_rad(4.0), 0.0, 1.0)
 		aback = attack < 0.0 and design.rig == ShipDesign.Rig.SQUARE
 
-	# Heeling tips the sails away from the wind, so they catch less of it.
-	var area := design.sail_area * sail_set * cos(heel)
+	# Heeling tips the sails away from the wind, so they catch less of it; cut rigging carries
+	# less sail.
+	var area := design.sail_area * minf(sail_set, rigging) * cos(heel)
 	var dynamic_pressure := 0.5 * AIR_DENSITY * flow_speed * flow_speed
 	return dynamic_pressure * area * (lift_direction * lift + flow * drag)
 

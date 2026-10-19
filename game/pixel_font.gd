@@ -96,6 +96,7 @@ const GLYPHS := {
 
 static var _texture: ImageTexture
 static var _regions := {}
+static var _font_file: FontFile
 
 
 ## Width in pixels of a line of text.
@@ -145,6 +146,33 @@ static func _ensure_built() -> void:
 		_regions[character] = Rect2(x, 0, glyph_width, HEIGHT)
 		x += glyph_width + 1
 	_texture = ImageTexture.create_from_image(image)
+
+
+## The same glyphs as a Godot font, so buttons, labels and anything else in Godot's interface
+## can use it. A fixed-size bitmap font: glyphs are indexed by their character code.
+static func font() -> FontFile:
+	if _font_file != null:
+		return _font_file
+	_ensure_built()
+	var file := FontFile.new()
+	var size := Vector2i(HEIGHT, 0)
+	file.fixed_size = HEIGHT
+	file.fixed_size_scale_mode = TextServer.FIXED_SIZE_SCALE_INTEGER_ONLY
+	file.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	file.set_cache_ascent(0, HEIGHT, ASCENT)
+	file.set_cache_descent(0, HEIGHT, HEIGHT - ASCENT)
+	file.set_texture_image(0, size, 0, _texture.get_image())
+	for character: String in GLYPHS:
+		var code := character.unicode_at(0)
+		var region: Rect2 = _regions[character]
+		file.set_glyph_advance(0, HEIGHT, code, Vector2(region.size.x + LETTER_SPACING, 0.0))
+		file.set_glyph_offset(0, size, code, Vector2(0.0, -ASCENT))
+		file.set_glyph_size(0, size, code, region.size)
+		file.set_glyph_uv_rect(0, size, code, region)
+		file.set_glyph_texture_idx(0, size, code, 0)
+	file.set_glyph_advance(0, HEIGHT, " ".unicode_at(0), Vector2(SPACE_WIDTH + LETTER_SPACING, 0.0))
+	_font_file = file
+	return file
 
 
 static func glyph_rows(character: String) -> PackedStringArray:
