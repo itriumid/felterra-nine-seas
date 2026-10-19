@@ -54,9 +54,9 @@ python3 tools/build_world_map.py <that directory> world/nusantara.png
 | Click the sea or a port | | Your crew sails there |
 | Click a ship | | Give chase |
 | A and D, or the left and right arrows | Left stick | Take the helm and steer |
+| W and S, or the up and down arrows | Shoulder buttons | Set or take in sail: a sailing ship's only throttle |
 | Mouse wheel, or minus and equals | Up and down on the directional pad | Zoom |
 | Tab | Back | Switch between the sloop and the brig |
-| W and S (in a bubble) | Shoulder buttons | Set or take in sail |
 | Q and E (in a bubble) | Triggers | Sheet in or ease the sails |
 | T (in a bubble) | Y | Automatic or manual trim |
 | Hold B (in a bubble) | X | Back the headsails, to get out of irons |

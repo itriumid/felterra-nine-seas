@@ -127,6 +127,7 @@ func switch_ship() -> void:
 	var replacement := MapShip.new(designs[design_index])
 	replacement.position = ship.position
 	replacement.heading = ship.heading
+	replacement.sail_set = ship.sail_set
 	ship = replacement
 
 

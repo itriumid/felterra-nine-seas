@@ -125,3 +125,18 @@ func test_the_noise_matches_its_lattice() -> void:
 	check(is_equal_approx(Chart.smooth_noise(Vector2(3.0, 7.0)), Chart._lattice(3, 7)), "noise off its lattice point")
 	var value := Chart._lattice(123456, 654321)
 	check(value >= 0.0 and value <= 1.0, "lattice value %f out of range" % value)
+
+
+func test_sail_set_is_the_throttle() -> void:
+	var speeds: Array[float] = []
+	for sail in [1.0, 0.5, 0.0]:
+		var ship := MapShip.new(ShipDesign.sloop())
+		ship.position = Chart.position_of(-5.0, 110.0)
+		ship.heading = Vector2.RIGHT.angle()
+		ship.sail_set = sail
+		ship.speed = 3.0
+		for minute in 120:
+			ship.step(60.0, Wind.bearing_to_direction(180.0) * 7.0, chart)
+		speeds.append(ship.speed)
+	check(absf(speeds[1] / speeds[0] - sqrt(0.5)) < 0.02, "half sail made %.2f of full speed" % (speeds[1] / speeds[0]))
+	check(speeds[2] < 0.05, "furled, the ship still made %.2f meters per second" % speeds[2])

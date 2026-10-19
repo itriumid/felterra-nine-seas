@@ -58,6 +58,8 @@ func _full_ship(map_ship: MapShip) -> Ship:
 	ship.position = map_ship.position - origin
 	ship.heading = map_ship.heading
 	ship.velocity = map_ship.forward() * map_ship.speed
+	ship.sail_ordered = map_ship.sail_set
+	ship.sail_set = map_ship.sail_set
 	ship.trim_instantly(wind.velocity_at(ship.position))
 	return ship
 
@@ -104,6 +106,7 @@ func _return(ship: Ship, map_ship: MapShip) -> void:
 	map_ship.position = origin + ship.position
 	map_ship.heading = ship.heading
 	map_ship.speed = maxf(ship.forward_speed(), 0.0)
+	map_ship.sail_set = ship.sail_ordered
 
 
 ## A captain's hands on the helm: merchants run from the player, navy ships close with them.

@@ -7,6 +7,7 @@ const HELP_LINES: Array[String] = [
 	"Click the sea or a port: sail there",
 	"Click a ship: give chase, and fight when you meet",
 	"A and D, or the arrow keys: take the helm and steer",
+	"W and S, or up and down: set or take in sail, to go faster or slower",
 	"Minus and equals, or the mouse wheel: zoom",
 	"Tab: switch between sloop and brig",
 	"F11: full screen",
@@ -59,7 +60,7 @@ func _draw() -> void:
 		"%s, %.1f knots, heading %s" % [
 			ship.design.display_name, ship.speed * InterfaceDrawing.KNOTS_PER_METER_PER_SECOND,
 			InterfaceDrawing.bearing_text(Wind.direction_to_bearing(ship.forward()))],
-		InterfaceDrawing.point_of_sail(angle, ship.speed),
+		"%s, sails %d%%" % [InterfaceDrawing.point_of_sail(angle, ship.speed), roundi(ship.sail_set * 100.0)],
 		"%s, %s" % [nearest.name, InterfaceDrawing.distance_text(ship.position.distance_to(nearest.position))],
 	]
 	if voyage.autopilot != null:

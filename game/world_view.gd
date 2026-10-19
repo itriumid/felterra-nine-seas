@@ -125,6 +125,10 @@ func _read_controls(delta: float) -> void:
 			voyage.chase(clicked)
 		else:
 			voyage.set_course(_origin() + mouse * ZOOM_LEVELS[zoom_index])
+	if Input.is_action_just_pressed("more_sail"):
+		voyage.ship.sail_set = minf(snappedf(voyage.ship.sail_set + 0.25, 0.25), 1.0)
+	if Input.is_action_just_pressed("less_sail"):
+		voyage.ship.sail_set = maxf(snappedf(voyage.ship.sail_set - 0.25, 0.25), 0.0)
 	if Input.is_action_just_pressed("switch_ship"):
 		voyage.switch_ship()
 	_read_view_controls()
