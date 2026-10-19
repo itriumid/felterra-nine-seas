@@ -10,9 +10,10 @@ const STEP := 1.0 / 60.0
 ## Steady forward speed, in meters per second, of a ship held on a fixed angle to the true
 ## wind (in degrees, 0 head to wind) with its sails trimmed automatically. Ships start from
 ## rest: a running start coasts for minutes in light air and reads as speed it doesn't have.
-static func steady_speed(design: ShipDesign, wind_angle: float, wind_speed: float, seconds := 150.0) -> float:
+static func steady_speed(design: ShipDesign, wind_angle: float, wind_speed: float, seconds := 150.0, load := 0.0) -> float:
 	var wind := Wind.steady(wind_speed, 0.0)
 	var ship := Ship.new(design)
+	ship.cargo_mass = load * design.cargo_capacity * 1000.0
 	ship.heading = deg_to_rad(wind_angle - 90.0)
 	var held_heading := ship.heading
 	var steps := int(seconds / STEP)
@@ -37,10 +38,20 @@ static func table(design: ShipDesign, wind_speed: float, increment := 5.0) -> Di
 	return speeds
 
 
-## Steady speed from the precomputed table, interpolated between the angles and wind speeds it
-## holds. Angle in degrees off the wind, 0 to 180; wind speed in meters per second.
-static func lookup(design_id: String, wind_angle: float, wind_speed: float) -> float:
-	var rows: Array = PolarTable.SPEEDS[design_id]
+## Steady speed from the precomputed table, interpolated between the loads, angles and wind
+## speeds it holds. Angle in degrees off the wind, 0 to 180; wind speed in meters per second;
+## load as a fraction of the cargo capacity.
+static func lookup(design_id: String, wind_angle: float, wind_speed: float, load := 0.0) -> float:
+	var tables: Array = PolarTable.SPEEDS[design_id]
+	var position := clampf(load, 0.0, 1.0) * (PolarTable.LOADS.size() - 1)
+	var lower := mini(int(position), PolarTable.LOADS.size() - 2)
+	return lerpf(
+		_lookup_table(tables[lower], wind_angle, wind_speed),
+		_lookup_table(tables[lower + 1], wind_angle, wind_speed),
+		position - lower)
+
+
+static func _lookup_table(rows: Array, wind_angle: float, wind_speed: float) -> float:
 	var angle := clampf(absf(wind_angle), 0.0, 180.0)
 	var angle_position := angle / PolarTable.ANGLE_STEP
 	var angle_index := mini(int(angle_position), PolarTable.ANGLE_COUNT - 2)
@@ -63,12 +74,12 @@ static func lookup(design_id: String, wind_angle: float, wind_speed: float) -> f
 
 ## The angle off the wind, in degrees, that makes the most progress straight upwind: where to
 ## sail close-hauled when beating.
-static func best_upwind_angle(design_id: String, wind_speed: float) -> float:
+static func best_upwind_angle(design_id: String, wind_speed: float, load := 0.0) -> float:
 	var best_angle := 45.0
 	var best_progress := -INF
 	var angle := 30.0
 	while angle <= 90.0:
-		var progress := lookup(design_id, angle, wind_speed) * cos(deg_to_rad(angle))
+		var progress := lookup(design_id, angle, wind_speed, load) * cos(deg_to_rad(angle))
 		if progress > best_progress:
 			best_progress = progress
 			best_angle = angle

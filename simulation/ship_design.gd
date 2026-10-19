@@ -61,6 +61,20 @@ var sail_handling_rate: float
 var trim_rate: float
 ## Mast positions along the hull, in meters forward of midships.
 var masts: PackedFloat32Array
+## Tons of cargo the hold carries.
+var cargo_capacity: float
+## Sailors needed to handle all plain sail, and the most the ship can berth.
+var crew_minimum: int
+var crew_maximum: int
+## What a shipyard asks for one, in reals.
+var price: int
+## Gun ports, both sides together; each broadside is half of them.
+var gun_ports: int
+
+## A six-pounder on its carriage, with its tackle and shot: about a ton, and it weighs the ship
+## down like cargo.
+const GUN_MASS := 900.0
+const GUN_PRICE := 120
 
 
 ## The speed where a displacement hull starts climbing its own bow wave: a Froude number of
@@ -102,6 +116,12 @@ static func sloop() -> ShipDesign:
 	design.sail_handling_rate = 0.35
 	design.trim_rate = deg_to_rad(60.0)
 	design.masts = PackedFloat32Array([1.5])
+	design.cargo_capacity = 30.0
+	# Pirate sloops sailed crammed: a big crew wins boarding fights.
+	design.crew_minimum = 8
+	design.crew_maximum = 75
+	design.price = 3000
+	design.gun_ports = 10
 	return design
 
 
@@ -137,6 +157,11 @@ static func brig() -> ShipDesign:
 	design.sail_handling_rate = 0.15
 	design.trim_rate = deg_to_rad(20.0)
 	design.masts = PackedFloat32Array([7.0, -5.0])
+	design.cargo_capacity = 150.0
+	design.crew_minimum = 25
+	design.crew_maximum = 140
+	design.price = 14000
+	design.gun_ports = 16
 	return design
 
 

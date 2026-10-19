@@ -79,13 +79,13 @@ func test_colliding_hulls_push_apart_and_keep_their_momentum() -> void:
 	other.heading = PI
 	bubble.player.velocity = Vector2(4.0, 0.0)
 	other.velocity = Vector2(-4.0, 0.0)
-	var momentum_before := bubble.player.velocity * bubble.player.design.mass + other.velocity * other.design.mass
+	var momentum_before := bubble.player.velocity * bubble.player.mass() + other.velocity * other.mass()
 	bubble._collide()
 	for step in 120:
 		bubble.player.position += bubble.player.velocity * Bubble.STEP
 		other.position += other.velocity * Bubble.STEP
 		bubble._collide()
-	var momentum_after := bubble.player.velocity * bubble.player.design.mass + other.velocity * other.design.mass
+	var momentum_after := bubble.player.velocity * bubble.player.mass() + other.velocity * other.mass()
 	check(not bubble.collisions.is_empty(), "the hulls never touched")
 	check((momentum_after - momentum_before).length() < momentum_before.length() * 0.01 + 1.0,
 		"momentum went from %s to %s" % [momentum_before, momentum_after])

@@ -14,10 +14,54 @@ var speed := 0.0
 var aground := false
 ## How much sail is set, 0 (furled) to 1 (all plain sail). A sailing ship's only throttle.
 var sail_set := 1.0
+## Tons of each good in the hold, by good identifier.
+var hold := {}
+var crew := 0
+## Soundness of the hull, 1 for new; collisions knock it down and a shipyard repairs it.
+var hull := 1.0
+## Barnacles and weed, 0 for a clean bottom; each unit doubles the hull's friction.
+var fouling := 0.0
+## Guns mounted, both sides together.
+var guns := 0
+## Soundness of masts, yards and sails, 1 for new; chain shot cuts it, and the ship can carry
+## only that share of its sail.
+var rigging := 1.0
+
+## Days at sea for a clean hull to foul enough to double its friction. Tropical water is hard on
+## a wooden bottom; ships were hauled out and scraped every few months.
+const FOULING_DAYS := 60.0
 
 
 func _init(ship_design: ShipDesign) -> void:
 	design = ship_design
+	crew = design.crew_minimum
+
+
+func cargo_tons() -> int:
+	var total := 0
+	for id in hold:
+		total += hold[id]
+	return total
+
+
+func free_tons() -> int:
+	return int(design.cargo_capacity) - cargo_tons()
+
+
+## Kilograms aboard beyond the empty ship: cargo and guns.
+func carried_mass() -> float:
+	return cargo_tons() * 1000.0 + guns * ShipDesign.GUN_MASS
+
+
+## What's aboard as a fraction of the hold's capacity, which is how the speed polars are keyed.
+## Guns count: they weigh the ship down like cargo.
+func cargo_load() -> float:
+	return clampf(carried_mass() / (design.cargo_capacity * 1000.0), 0.0, 1.0)
+
+
+## The sail the crew can actually handle: short of the minimum crew, not all of it.
+func handled_sail() -> float:
+	return minf(minf(sail_set, float(crew) / design.crew_minimum), rigging)
 
 
 func forward() -> Vector2:
@@ -27,8 +71,11 @@ func forward() -> Vector2:
 func step(delta: float, true_wind: Vector2, chart: Chart) -> void:
 	var angle_off_wind := rad_to_deg(absf(forward().angle_to(-true_wind)))
 	# Drive grows with sail area and drag with the square of speed, so speed goes with the square
-	# root of the sail set: half sail is about seven tenths of full speed.
-	var target := maxf(Polar.lookup(design.id, angle_off_wind, true_wind.length()), 0.0) * sqrt(sail_set)
+	# root of the sail set: half sail is about seven tenths of full speed. Fouling multiplies the
+	# hull's friction, which is about half its resistance at a sailing pace.
+	var polar := maxf(Polar.lookup(design.id, angle_off_wind, true_wind.length(), cargo_load()), 0.0)
+	var target := polar * sqrt(handled_sail()) / sqrt(1.0 + 0.5 * fouling)
+	fouling += delta / (FOULING_DAYS * Calendar.SECONDS_PER_DAY)
 	speed = lerpf(speed, target, 1.0 - exp(-delta / SETTLING_TIME))
 	var next := position + forward() * speed * delta
 	aground = chart.is_land(next)
