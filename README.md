@@ -25,16 +25,60 @@ Click anywhere on the sea, or on a port, and your crew sails there: around the l
 when the wind is against you, beating to windward. Press A or D (or the arrow keys) to take
 the helm yourself; that cancels the course. Zoom with the mouse wheel or minus and equals, from
 the whole chart down to the deck, where every ship is drawn at its true size with its sails set
-to the real wind. The clock runs at an hour a second, the same for everyone.
+to the real wind. The clock runs at ten minutes a second, the same for everyone.
 
 Merchants trade between the ports and navy squadrons patrol their stations, all sailing the
 same physics as you, so a merchant bound east into the July monsoon zigzags up the coast just
 as a real one did. Sails within 20 kilometers are reported as sighted.
 
+## Ports and trade
+
+Click a port and your crew sails there and moors, or furl all sail beside one. Moored, the port
+opens:
+
+- **Market:** nine goods the Nusantara seas traded around 1700, from rice and salt to cloves
+  and nutmeg, bought and sold in reals. A good costs least where it's produced and more the
+  further it has to be carried, so neighboring ports keep close prices and the money is in the
+  long hauls. Every ton you buy raises a port's price and every ton you sell lowers it; stocks
+  recover over the following days.
+- **Shipyard:** repair the hull, haul out and scrape the barnacles that slow a ship over weeks
+  at sea, or trade your ship in for another class.
+- **Tavern:** sign sailors on or pay them off. Wages fall due every day, unpaid sailors
+  desert, and a ship short of its minimum crew can't carry all its sail.
+
+Cargo weighs the ship down for real: a loaded hull is heavier, slower to answer the helm,
+deeper in the water and steadier under sail. The world keeps its clock while you're in port.
+
+## Renown and honor
+
+Renown is how widely you're known: captures, victories and trade all build it. Honor is how
+you're known: attacking lawful ships costs some, sinking them instead of taking them costs a
+lot, and it drifts back slowly as deeds are forgotten. A famous captain draws more sailors to the
+taverns, and merchants strike sooner to a famous one, far sooner to one known for cruelty. Fall
+below -20 honor and every navy ship near enough comes hunting you; in port you're safe.
+
+## Battle bubbles
+
 Click a ship to give chase. Close to 3 kilometers and a battle bubble opens: the view zooms in,
 time inside runs four times faster than real, and the full sailing physics takes over. You
 handle the rudder, sails and trim yourself; merchants run, using the wind as well as they can,
-and hulls that meet collide with all the momentum they carry. Sail more than 6 kilometers clear
+and hulls that meet collide with all the momentum they carry and the damage that goes
+with it.
+
+Guns fire in broadsides: Space fires every gun on the side facing the nearest ship, each trained
+on her as far as its port allows and laid for her range. Turn your side to the enemy, as real
+ships did. A broadside takes a minute to reload, longer short-handed (four sailors a gun), and C
+changes the shot: round shot holes hulls, chain shot cuts rigging so a ship can carry less sail,
+grapeshot sweeps a deck at close range. Balls scatter more the further they fly, smoke drifts
+off on the wind, and a ship with no hull left goes down with everything aboard. A sloop's
+six-pounders barely dent a brig: cut her rigging, sweep her deck, and board.
+
+To take a ship, get alongside her, within a few meters and moving with her, and press G to
+throw the grapples. Then it's numbers, by Lanchester's square law: each side loses fighters
+in proportion to the other side's, so a big crew wins fast and cheaply, which is why pirate
+sloops sailed crammed. Merchants outnumbered two to one strike their colors at once; navy crews
+fight. Boarders who fall below four in ten of those who went over are thrown back. Take what
+you want from a ship that has struck, then cast off. Sail more than 6 kilometers clear
 and the bubble closes. The world outside doesn't wait: a bubble's minutes are the world's
 hours, as they'd have to be with other players sharing it.
 
@@ -56,7 +100,9 @@ python3 tools/build_world_map.py <that directory> world/nusantara.png
 | A and D, or the left and right arrows | Left stick | Take the helm and steer |
 | W and S, or the up and down arrows | Shoulder buttons | Set or take in sail: a sailing ship's only throttle |
 | Mouse wheel, or minus and equals | Up and down on the directional pad | Zoom |
-| Tab | Back | Switch between the sloop and the brig |
+| Space (in a bubble) | B | Fire the broadside facing the nearest ship |
+| C (in a bubble) | Right stick | Change shot: round, chain or grape |
+| G (in a bubble) | A | Throw the grapples and board |
 | Q and E (in a bubble) | Triggers | Sheet in or ease the sails |
 | T (in a bubble) | Y | Automatic or manual trim |
 | Hold B (in a bubble) | X | Back the headsails, to get out of irons |
@@ -95,6 +141,9 @@ godot --headless --path . --script tools/print_polar.gd
 
 # Rebuild the polar table the world map sails by (after any change to the sailing model)
 godot --headless --path . --script tools/build_polars.gd
+
+# Rebuild the port-to-port route table (after changing the chart, ports or navigation)
+godot --headless --path . --script tools/build_routes.gd
 ```
 
 The tests check behavior a sailor would recognize: the sloop's best angle upwind is about 45°,
