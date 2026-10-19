@@ -618,3 +618,57 @@ func _pay_crew(delta: float) -> void:
 	while _unpaid_days >= 1.0 and ship.crew > 0:
 		_unpaid_days -= 1.0
 		ship.crew -= 1
+
+
+
+# Saving.
+
+## The voyage as plain data for a save file. Not taken inside a battle bubble: bubbles last
+## minutes, and the save waits for the ship to be back on the map.
+func to_saved() -> Dictionary:
+	var saved_markets := {}
+	for port_name: String in markets:
+		saved_markets[port_name] = markets[port_name].to_saved()
+	var saved_captains: Array = []
+	for captain in captains:
+		saved_captains.append(captain.to_saved(self))
+	return {
+		"seconds": calendar.seconds, "purse": purse, "renown": renown, "honor": honor,
+		"ship": ship.to_saved(), "design_index": design_index,
+		"docked": docked.get("name", ""), "unpaid_days": _unpaid_days,
+		"markets": saved_markets, "taverns": taverns.duplicate(),
+		"captains": saved_captains,
+		"autopilot": autopilot.to_saved(self) if autopilot != null else {},
+		"random": str(random.state), "news": news, "news_age": news_age,
+	}
+
+
+## Puts a voyage back as it was saved.
+func restore(saved: Dictionary) -> void:
+	calendar.seconds = saved.seconds
+	purse = saved.purse
+	renown = saved.renown
+	honor = saved.honor
+	ship = MapShip.from_saved(saved.ship)
+	design_index = int(saved.design_index)
+	docked = port_named(saved.docked)
+	_unpaid_days = saved.unpaid_days
+	for port_name: String in saved.markets:
+		markets[port_name].restore(saved.markets[port_name])
+	for port_name: String in saved.taverns:
+		taverns[port_name] = int(saved.taverns[port_name])
+	captains.clear()
+	for captain_data: Dictionary in saved.captains:
+		captains.append(Captain.from_saved(captain_data, self))
+	autopilot = null
+	if not saved.autopilot.is_empty():
+		autopilot = Captain.from_saved(saved.autopilot, self)
+		autopilot.ship = ship
+		var quarry_index := int(saved.autopilot.quarry)
+		if quarry_index >= 0 and quarry_index < captains.size():
+			autopilot.quarry = captains[quarry_index]
+	# Quarries of the computer captains aren't saved: only the player's crew chases.
+	random.state = int(saved.random)
+	news = saved.news
+	news_age = saved.news_age
+	bubble = null

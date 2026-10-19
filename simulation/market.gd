@@ -103,3 +103,15 @@ func advance(seconds: float) -> void:
 func _price_at(id: String, tons_in_stock: float) -> float:
 	var scarcity := sqrt(TYPICAL_STOCK / maxf(tons_in_stock, 1.0))
 	return Goods.typical_price(id) * clampf(scarcity, LOWEST_PRICE, HIGHEST_PRICE)
+
+
+
+func to_saved() -> Dictionary:
+	return {"stock": stock.duplicate(), "settled": settled.duplicate()}
+
+
+func restore(saved: Dictionary) -> void:
+	for id: String in saved.stock:
+		stock[id] = saved.stock[id]
+	for id: String in saved.settled:
+		settled[id] = saved.settled[id]

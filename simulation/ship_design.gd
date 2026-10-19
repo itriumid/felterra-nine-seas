@@ -167,3 +167,10 @@ static func brig() -> ShipDesign:
 
 static func all() -> Array[ShipDesign]:
 	return [sloop(), brig()]
+
+
+static func named(design_id: String) -> ShipDesign:
+	for design in all():
+		if design.id == design_id:
+			return design
+	return sloop()
