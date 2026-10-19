@@ -120,3 +120,41 @@ func test_the_crew_turns_at_the_helm_rate() -> void:
 	voyage.advance(60.0)
 	var turned := absf(angle_difference(before, voyage.ship.heading))
 	check(turned <= Captain.TURN_RATE * 60.0 + 0.0001, "turned %.1f degrees in a game minute" % rad_to_deg(turned))
+
+
+func test_every_port_reaches_every_other_quickly() -> void:
+	# Each route is planned in the middle of a frame, so a slow one freezes the game.
+	var voyage := _shared_voyage()
+	var slowest := 0
+	for from in voyage.ports:
+		for to in voyage.ports:
+			if from == to:
+				continue
+			var start := Time.get_ticks_usec()
+			var route := voyage.navigation.route(from.position, to.position)
+			slowest = maxi(slowest, (Time.get_ticks_usec() - start) / 1000)
+			check(not route.is_empty(), "no route from %s to %s" % [from.name, to.name])
+	check(slowest < 500, "the slowest route took %d milliseconds" % slowest)
+
+
+func test_an_unreachable_target_fails_fast() -> void:
+	var voyage := _shared_voyage()
+	var start := Time.get_ticks_usec()
+	# A lake in the middle of Borneo, cut off from the sea.
+	voyage.navigation.route(voyage.port_named("Batavia").position, Chart.position_of(0.8, 112.3))
+	var milliseconds := (Time.get_ticks_usec() - start) / 1000
+	check(milliseconds < 2000, "giving up took %d milliseconds" % milliseconds)
+
+
+func test_the_route_table_matches_the_navigation() -> void:
+	# Rebuild with tools/build_routes.gd whenever this fails.
+	var voyage := _shared_voyage()
+	for pair in [["Batavia", "Patani"], ["Aceh", "Makassar"], ["Surabaya", "Brunei"]]:
+		var from: Vector2 = voyage.port_named(pair[0]).position
+		var to: Vector2 = voyage.port_named(pair[1]).position
+		var stored: Array = RouteTable.ROUTES.get(Navigation.key(from, to), [])
+		var fresh := voyage.navigation.search(from, to)
+		var same := stored.size() == fresh.size()
+		for index in mini(stored.size(), fresh.size()):
+			same = same and (stored[index] as Vector2).distance_to(fresh[index]) < 1.0
+		check(same, "the stored route from %s to %s is out of date" % pair)

@@ -14,7 +14,8 @@ const HARBORS: Array[Array] = [
 	["Cirebon", -6.7, 108.56],
 	["Semarang", -6.94, 110.42],
 	["Surabaya", -7.2, 112.74],
-	["Banjarmasin", -3.45, 114.55],
+	# Banjarmasin itself is up the Barito; ships reached it from the river mouth.
+	["Banjarmasin", -3.5, 114.45],
 	["Pontianak", -0.03, 109.2],
 	["Kuching", 1.65, 110.4],
 	["Brunei", 4.95, 114.9],

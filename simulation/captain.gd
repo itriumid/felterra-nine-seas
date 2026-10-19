@@ -77,6 +77,9 @@ func update(delta: float, true_wind: Vector2, voyage: Voyage) -> void:
 		return
 	if navigate(delta, true_wind, voyage):
 		in_port_for = voyage.random.randf_range(PORT_HOURS.x, PORT_HOURS.y) * 3600.0
+		if destination.has("position"):
+			# Come in and moor: the next voyage starts from the port itself.
+			ship.position = destination.position
 
 
 ## Sails the route for one step. Returns true once the route is done; the ship doesn't move

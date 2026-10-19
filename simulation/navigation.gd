@@ -11,6 +11,11 @@ const CELL_KILOMETERS := 5
 const SEA_ROOM := 2
 ## Straight legs are checked every this many meters.
 const CHECK_SPACING := 400.0
+## How strongly the search heads for the goal: 1 finds the shortest route, more explores less.
+const GREED := 1.5
+## Cells a search may explore before giving up. Real routes need a few thousand; without a cap,
+## a target cut off from the open sea would make the search crawl through every cell there is.
+const SEARCH_LIMIT := 150000
 
 var chart: Chart
 var _columns: int
@@ -38,14 +43,29 @@ func _init(sea_chart: Chart) -> void:
 
 
 ## Waypoints from one place to another, starting after the start and ending at the finish. Empty
-## if there's no way through.
+## if there's no way through. Routes between ports come from the prebuilt table, so ships
+## never plan a voyage in the middle of a frame; anything else is searched for and remembered.
 func route(start: Vector2, finish: Vector2) -> Array[Vector2]:
-	var key := "%d,%d>%d,%d" % [roundi(start.x), roundi(start.y), roundi(finish.x), roundi(finish.y)]
-	if _cache.has(key):
-		return _cache[key].duplicate()
-	var found := _search(start, finish)
-	_cache[key] = found
+	var route_key := key(start, finish)
+	if _cache.has(route_key):
+		return _cache[route_key].duplicate()
+	if RouteTable.ROUTES.has(route_key):
+		var stored: Array[Vector2] = []
+		stored.assign(RouteTable.ROUTES[route_key])
+		_cache[route_key] = stored
+		return stored.duplicate()
+	var found := search(start, finish)
+	_cache[route_key] = found
 	return found.duplicate()
+
+
+## Searches for a route without the table or the memory: for building the table.
+func search(start: Vector2, finish: Vector2) -> Array[Vector2]:
+	return _search(start, finish)
+
+
+static func key(start: Vector2, finish: Vector2) -> String:
+	return "%d,%d>%d,%d" % [roundi(start.x), roundi(start.y), roundi(finish.x), roundi(finish.y)]
 
 
 ## Whether a straight line between two points stays in water with room to spare.
@@ -62,15 +82,34 @@ func _search(start: Vector2, finish: Vector2) -> Array[Vector2]:
 	var last := _nearest_open_cell(finish)
 	if first < 0 or last < 0:
 		return []
-	# A* over the grid, eight ways, with a binary heap of [estimated total, cell].
-	var cost := {first: 0.0}
-	var came_from := {}
+	# A* over the grid, eight ways, with a binary heap of [estimated total, cell]. The estimate is
+	# weighted toward the goal, which explores far fewer cells for a route a few percent longer;
+	# straightening takes most of that back.
+	var cell_count := _open.size()
+	var cost := PackedFloat32Array()
+	cost.resize(cell_count)
+	cost.fill(INF)
+	var came_from := PackedInt32Array()
+	came_from.resize(cell_count)
+	came_from.fill(-1)
+	# Each cell is expanded once. With the estimate weighted toward the goal, a cell can be
+	# reached again by a slightly better path, and expanding it every time compounds without end.
+	var expanded := PackedByteArray()
+	expanded.resize(cell_count)
+	cost[first] = 0.0
 	var heap: Array = [[0.0, first]]
-	var goal := _cell_center(last)
+	var goal := _cell_center(last) / (CELL_KILOMETERS * 1000.0)
+	var explored := 0
 	while not heap.is_empty():
 		var current: int = _pop(heap)[1]
 		if current == last:
 			break
+		if expanded[current] == 1:
+			continue
+		expanded[current] = 1
+		explored += 1
+		if explored > SEARCH_LIMIT:
+			return []
 		var column := current % _columns
 		var row := current / _columns
 		for dy in range(-1, 2):
@@ -82,16 +121,16 @@ func _search(start: Vector2, finish: Vector2) -> Array[Vector2]:
 				if next_column < 0 or next_row < 0 or next_column >= _columns or next_row >= _rows:
 					continue
 				var next := next_row * _columns + next_column
-				if _open[next] == 0 or not _edge_clear(current, next):
+				if _open[next] == 0 or expanded[next] == 1:
 					continue
-				var step := 1.4142 if dx != 0 and dy != 0 else 1.0
-				var new_cost: float = cost[current] + step
-				if not cost.has(next) or new_cost < cost[next]:
-					cost[next] = new_cost
-					came_from[next] = current
-					var estimate := new_cost + _cell_center(next).distance_to(goal) / (CELL_KILOMETERS * 1000.0)
-					_push(heap, [estimate, next])
-	if not cost.has(last):
+				var new_cost := cost[current] + (1.4142 if dx != 0 and dy != 0 else 1.0)
+				if new_cost >= cost[next] or not _edge_clear(current, next):
+					continue
+				cost[next] = new_cost
+				came_from[next] = current
+				var remaining := Vector2(next_column + 0.5, next_row + 0.5).distance_to(goal)
+				_push(heap, [new_cost + GREED * remaining, next])
+	if came_from[last] < 0 and last != first:
 		return []
 	var cells: Array[int] = [last]
 	while cells[0] != first:
@@ -127,19 +166,52 @@ func _edge_clear(from: int, to: int) -> bool:
 	return clear_water
 
 
-## Drops every waypoint the ship could sail past in a straight line anyway.
+## Drops every waypoint the ship could sail past in a straight line anyway. Each leg is
+## stretched forward for as long as it runs through open water on the chart's own pixels, which
+## is cheap; then the few legs left are checked against the detailed coast, and any that clips a
+## point is split back at the waypoint in its middle.
 func _straighten(points: Array[Vector2]) -> Array[Vector2]:
-	var kept: Array[Vector2] = []
+	var kept: Array[int] = [0]
 	var anchor := 0
 	while anchor < points.size() - 1:
 		var reach := anchor + 1
-		for candidate in range(points.size() - 1, anchor + 1, -1):
-			if clear(points[anchor], points[candidate]):
-				reach = candidate
-				break
-		kept.append(points[reach])
+		while reach + 1 < points.size() and _open_water_between(points[anchor], points[reach + 1]):
+			reach += 1
+		kept.append(reach)
 		anchor = reach
-	return kept
+	var checked: Array[int] = [kept[0]]
+	for index in range(1, kept.size()):
+		_append_clear_legs(points, kept[index - 1], kept[index], checked)
+	var waypoints: Array[Vector2] = []
+	for index in range(1, checked.size()):
+		waypoints.append(points[checked[index]])
+	return waypoints
+
+
+## Adds the end of a leg, first splitting it at its middle waypoint for as long as it clips the
+## detailed coast.
+func _append_clear_legs(points: Array[Vector2], from: int, to: int, into: Array[int]) -> void:
+	if to - from > 1 and not clear(points[from], points[to], 300.0):
+		var middle := (from + to) / 2
+		_append_clear_legs(points, from, middle, into)
+		_append_clear_legs(points, middle, to, into)
+		return
+	into.append(to)
+
+
+## Whether a straight line stays in open water, read off the chart's pixels: water at least
+## SEA_ROOM kilometers from the coast, except near the ends, where ports sit right by the shore.
+func _open_water_between(from: Vector2, to: Vector2) -> bool:
+	var steps := maxi(ceili(from.distance_to(to) / 500.0), 1)
+	for index in range(1, steps):
+		var point := from.lerp(to, float(index) / steps)
+		var data := chart.image.get_pixelv(Vector2i((point / Chart.METERS_PER_PIXEL).floor()))
+		if data.r > 0.5:
+			return false
+		var near_an_end := point.distance_to(from) < 4000.0 or point.distance_to(to) < 4000.0
+		if roundi(data.g * 255.0) < SEA_ROOM and not near_an_end:
+			return false
+	return true
 
 
 func _nearest_open_cell(world_position: Vector2) -> int:
