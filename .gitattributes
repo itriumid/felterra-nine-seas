@@ -1,0 +1,3 @@
+# Godot writes LF on every operating system; keep checkouts the same so Windows doesn't diff
+# every file it touches.
+* text=auto eol=lf

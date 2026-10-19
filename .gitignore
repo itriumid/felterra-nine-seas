@@ -1,0 +1,7 @@
+.handbook
+
+# Godot's import cache and editor state, rebuilt on every machine.
+.godot/
+
+# Exported builds.
+/exports/
