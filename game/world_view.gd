@@ -19,7 +19,7 @@ const DEFAULT_ZOOM := 2
 const TRUE_SIZE_BELOW := 2.5
 ## How fast the helm turns the ship, in degrees per real second: the crew's turn rate on the
 ## world clock, so taking over from them or handing back never jumps.
-const TURN_RATE := 2.0 / 60.0 * TIME_SCALE
+const TURN_RATE := 10.0 / 60.0 * TIME_SCALE
 ## The longest stretch of game time stepped at once, so ships can't jump across a spit of land.
 const LONGEST_STEP := 120.0
 ## Ships closer than this are reported as sighted.
@@ -415,9 +415,8 @@ func _draw() -> void:
 	if meters_per_pixel >= TRUE_SIZE_BELOW:
 		for captain in voyage.captains:
 			if captain.at_sea():
-				var flag := Palette.NAVY if captain.role == Captain.Role.NAVY else Palette.MERCHANT
-				_draw_ship_symbol(captain.ship, flag, captain.role == Captain.Role.NAVY)
-		_draw_ship_symbol(voyage.ship, Palette.PLAYER, false)
+				_draw_ship_symbol(captain.ship, flag_color(captain.role), captain.role)
+		_draw_ship_symbol(voyage.ship, Palette.PLAYER, -1)
 
 
 ## Inside a bubble, every ship off the edge of the screen gets a pointer at the edge, in its
@@ -435,8 +434,7 @@ func _draw_bubble_markers() -> void:
 		var scale_y := (inset.size.y / 2.0) / maxf(absf(direction.y), 0.0001)
 		var edge := (center + direction * minf(scale_x, scale_y)).floor()
 		var across := direction.orthogonal()
-		var navy := voyage.bubble.captains[index].role == Captain.Role.NAVY
-		var flag := Palette.NAVY if navy else Palette.MERCHANT
+		var flag := flag_color(voyage.bubble.captains[index].role)
 		var marker := PackedVector2Array([edge + direction * 6.0, edge + across * 5.0, edge - across * 5.0])
 		draw_colored_polygon(marker, flag)
 		var outline := marker.duplicate()
@@ -461,7 +459,14 @@ func _draw_course() -> void:
 ## A ship as a chart symbol, at a fixed size since it's far too small to see at true size, its
 ## sail swung out to leeward the way the wind sets it, and its flag at the masthead: navy ships
 ## fly a long pennant, so the flag's shape tells them apart as well as its color.
-func _draw_ship_symbol(ship: MapShip, flag: Color, long_pennant: bool) -> void:
+static func flag_color(role: Captain.Role) -> Color:
+	return [Palette.MERCHANT, Palette.NAVY, Palette.PIRATE][role]
+
+
+## A ship as a chart symbol. Each kind flies its own flag, in its own color and its own shape,
+## so they tell apart without relying on color: merchants a small flag, the navy a long
+## pennant, pirates a broad square one; the player (role -1) flies pink.
+func _draw_ship_symbol(ship: MapShip, flag: Color, role: int) -> void:
 	var center := _to_screen(ship.position)
 	var screen := Rect2(Vector2.ZERO, get_viewport_rect().size).grow(12.0)
 	if not screen.has_point(center):
@@ -486,5 +491,7 @@ func _draw_ship_symbol(ship: MapShip, flag: Color, long_pennant: bool) -> void:
 	draw_colored_polygon(PackedVector2Array([mast, mast.lerp(sail_end, 0.5) + belly, sail_end]), Palette.SAIL)
 	draw_line(mast, sail_end, Palette.SPAR)
 	draw_rect(Rect2(mast - Vector2.ONE, Vector2(2.0, 2.0)), flag)
-	if long_pennant:
+	if role == Captain.Role.NAVY:
 		draw_line(mast, mast - forward * 4.0, flag)
+	elif role == Captain.Role.PIRATE:
+		draw_rect(Rect2(mast - Vector2(2.0, 2.0), Vector2(4.0, 4.0)), flag)

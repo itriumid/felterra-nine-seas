@@ -49,6 +49,18 @@ opens:
 Cargo weighs the ship down for real: a loaded hull is heavier, slower to answer the helm,
 deeper in the water and steadier under sail. The world keeps its clock while you're in port.
 
+## Pirates
+
+Pirate sloops sail out of lairs among the Riau islands, Belitung and the Karimata islands, lie
+in wait along the trade routes, and take the merchants they outnumber; the markets feel it. The
+navy hunts them down. They'll come for you too if your crew looks small enough: broadsides to
+soften you up, then grapples and boarders. Lose that fight and they strip your hold; beat them
+off and they've lost their best hands. Up close, the weather gauge matters: a pirate to windward
+chooses its moment, one to leeward has to claw up to you.
+
+Fighting pirates is honest work. Taking or sinking one earns renown and honor, and a bounty that
+the harbor master pays at the next port.
+
 ## Renown and honor
 
 Renown is how widely you're known: captures, victories and trade all build it. Honor is how
@@ -59,7 +71,7 @@ below -20 honor and every navy ship near enough comes hunting you; in port you'r
 
 ## Battle bubbles
 
-Click a ship to give chase. Close to 3 kilometers and a battle bubble opens: the view zooms in,
+Click a ship to give chase. Chasers steer for where their quarry will be, not where it is. Close to 3 kilometers and a battle bubble opens: the view zooms in,
 time inside runs four times faster than real, and the full sailing physics takes over. You
 handle the rudder, sails and trim yourself; merchants run, using the wind as well as they can,
 and hulls that meet collide with all the momentum they carry and the damage that goes

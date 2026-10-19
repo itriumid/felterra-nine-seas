@@ -12,7 +12,8 @@ var saving := true
 # year> sets the date; --zoom=<level> picks a zoom level, 0 (the whole chart) to 10 (the deck);
 # --bubble starts in a bubble with a merchant brig half a kilometer away; --port-tab=<1 or 2>
 # opens the port screen on the shipyard or the tavern; --plunder starts alongside a merchant that
-# has just struck; --battle starts trading broadsides with a navy brig. Any of these starts a
+# has just struck; --battle starts trading broadsides with a navy brig; --pirates starts with a
+# pirate sloop closing to board. Any of these starts a
 # fresh voyage and saves nothing. --new-voyage abandons the saved voyage and starts again.
 var _screenshot_path := ""
 var _screenshot_after := 4.0
@@ -49,6 +50,9 @@ func _ready() -> void:
 		elif argument == "--plunder":
 			_meet_a_merchant()
 			_take_her()
+		elif argument == "--pirates":
+			_meet_a_merchant()
+			_pirates_close_in()
 		elif argument == "--battle":
 			_meet_a_merchant()
 			_fight_the_navy()
@@ -87,6 +91,21 @@ func _fight_the_navy() -> void:
 	bubble.ships[0].heading = bubble.player.heading
 	bubble.ships[0].velocity = bubble.player.velocity
 	bubble.fire()
+
+
+func _pirates_close_in() -> void:
+	var bubble := voyage.bubble
+	var pirate: Captain = bubble.captains[0]
+	pirate.role = Captain.Role.PIRATE
+	pirate.hostile = true
+	pirate.ship.crew = 60
+	pirate.ship.guns = 8
+	voyage.ship.crew = 20
+	# To windward of the player, where the wind lets her run down and choose her moment.
+	var windward := -bubble.wind.velocity_at(bubble.player.position).normalized()
+	bubble.ships[0].position = bubble.player.position + windward * 60.0
+	bubble.ships[0].heading = bubble.player.heading
+	bubble.ships[0].velocity = bubble.player.velocity
 
 
 func _take_her() -> void:

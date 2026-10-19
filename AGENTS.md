@@ -92,7 +92,7 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
 - **Pixels stay one size.** Zoom by changing pixels per meter, never by scaling the camera or a
   node, and draw on the low-resolution screen.
 - **To see the game without playing it**, run
-  `godot --path . -- --screenshot=<path>.png --screenshot-after=8` (add `--bubble`, `--plunder`, `--battle`, `--brig`,
+  `godot --path . -- --screenshot=<path>.png --screenshot-after=8` (add `--bubble`, `--plunder`, `--battle`, `--pirates`, `--brig`,
   `--help-overlay`, `--zoom=<level>`, `--day=<day of the year>` or `--port-tab=<1 or 2>`). It opens a window, saves one
   640 by 360 frame, and quits. The window takes keyboard focus, so warn whoever is at the
   machine first.

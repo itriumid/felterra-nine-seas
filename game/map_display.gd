@@ -99,6 +99,8 @@ func _draw() -> void:
 		lines.append("Aground! Steer away from the land")
 	var moored := not voyage.docked.is_empty()
 	lines.append(_reputation_line())
+	if voyage.bounty > 0.0:
+		lines.append("Bounties owed: %s, paid at the next port" % InterfaceDrawing.reals_text(voyage.bounty))
 	if voyage.hunted():
 		lines.append("The navy is hunting you")
 	if not _news_line().is_empty():
@@ -190,11 +192,19 @@ func _boarding_line(bubble: Bubble) -> String:
 	match bubble.boarding:
 		Bubble.Boarding.FIGHTING:
 			var fighters := bubble.fighters()
-			return "Boarding! %d of yours against %d of theirs" % [fighters.x, fighters.y]
+			if bubble.player_boarding:
+				return "Boarding! %d of yours against %d of theirs" % [fighters.x, fighters.y]
+			return "Pirates boarding! %d of them against %d of yours" % [fighters.x, fighters.y]
 		Bubble.Boarding.TAKEN:
 			return "She has struck her colors"
+		Bubble.Boarding.PLUNDERED:
+			return "Your crew struck. The pirates have stripped your hold"
+		Bubble.Boarding.BEATEN_OFF:
+			return "The pirate boarders are beaten off!"
 		Bubble.Boarding.REPELLED:
 			return "Thrown back! The grapples are cut"
+	if bubble.pirates_closing():
+		return "Pirates closing to board you! Grapeshot, or run"
 	var hint := bubble.boarding_hint()
 	if hint.is_empty():
 		return "Alongside! Press G to board"
