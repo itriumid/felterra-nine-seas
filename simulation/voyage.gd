@@ -42,6 +42,27 @@ var honor := 0.0
 ## The latest thing worth telling the player, and how many game seconds it has been shown.
 var news := ""
 var news_age := 0.0
+## Pirate lairs, as {name, position}, and the reals owed to the player in bounties, paid at the
+## next port.
+var lairs: Array[Dictionary] = []
+var bounty := 0.0
+var _since_pirate := 0.0
+
+## Islands pirates actually hid among: the Riau islands south of Singapura, Belitung, and the
+## Karimata islands off Borneo.
+const LAIRS: Array[Array] = [
+	["Riau", 0.95, 104.45],
+	["Belitung", -2.75, 107.65],
+	["Karimata", -1.6, 108.9],
+]
+const PIRATES := 4
+## A pirate lost is replaced, one at a time, this often.
+const PIRATE_DAYS := 5.0
+## What the authorities pay for a pirate taken or sunk.
+const BOUNTY_TAKEN := 600.0
+const BOUNTY_SUNK := 400.0
+## News of fights between computer ships reaches the player within this many meters.
+const NEWS_RANGE := 150000.0
 
 ## What the world makes of each deed, as [renown, honor].
 const DEEDS := {
@@ -52,6 +73,11 @@ const DEEDS := {
 	"sank_merchant": [3.0, -15.0],
 	"sank_navy": [10.0, -5.0],
 	"shipwrecked": [-10.0, 0.0],
+	# Fighting pirates is defending the trade: no honor lost, and taking them earns it.
+	"attacked_pirate": [0.0, 0.0],
+	"captured_pirate": [10.0, 5.0],
+	"sank_pirate": [6.0, 3.0],
+	"plundered_by_pirates": [-3.0, 0.0],
 }
 ## Below this honor the navy hunts the player.
 const HUNTED_BELOW := -20.0
@@ -105,8 +131,12 @@ func _init(seed_value := 39) -> void:
 			prices[id] = Market.regional_price(id, port, ports, distances)
 		markets[port.name] = Market.new(prices)
 		taverns[port.name] = random.randi_range(10, TAVERN_LIMIT)
+	for lair in LAIRS:
+		lairs.append({"name": lair[0], "position": chart.nearest_water(Chart.position_of(lair[1], lair[2]))})
 	dock(port_named(START_PORT))
 	_spawn_traffic()
+	for index in PIRATES:
+		_spawn_pirate(random.randf_range(0.0, 96.0) * 3600.0)
 
 
 ## Meters by sea between every pair of ports, along their routes, by "port>port" key.
@@ -158,6 +188,39 @@ func nearest_sighting() -> Dictionary:
 			nearest_distance = distance
 			nearest = {"captain": captain, "distance": distance}
 	return nearest
+
+
+func _spawn_pirate(resting: float) -> void:
+	var pirate := Captain.new(Captain.Role.PIRATE, ShipDesign.sloop())
+	pirate.lair = lairs[random.randi_range(0, lairs.size() - 1)]
+	pirate.ship.position = pirate.lair.position
+	pirate.destination = pirate.lair
+	pirate.in_port_for = resting
+	captains.append(pirate)
+
+
+## Takes a captain out of the world, and out of anyone's sights.
+func remove_captain(gone: Captain) -> void:
+	captains.erase(gone)
+	for captain in captains:
+		if captain.quarry == gone:
+			captain.quarry = null
+			captain.replan = true
+	if autopilot != null and autopilot.quarry == gone:
+		autopilot = null
+
+
+## Tells the player of something that happened near enough to hear about.
+func tell_near(where: Vector2, message: String) -> void:
+	if where.distance_to(ship.position) < NEWS_RANGE:
+		tell(message)
+
+
+func lair_named(lair_name: String) -> Dictionary:
+	for lair in lairs:
+		if lair.name == lair_name:
+			return lair
+	return {}
 
 
 func port_named(port_name: String) -> Dictionary:
@@ -249,6 +312,7 @@ func advance(delta: float) -> void:
 	_pay_crew(delta)
 	_forget(delta)
 	_send_the_navy()
+	_replace_pirates(delta)
 	news_age += delta
 	for captain in captains:
 		captain.update(delta, monsoon.velocity_at(captain.ship.position), self)
@@ -319,7 +383,7 @@ func step_bubble() -> void:
 		reckon(deed)
 	bubble.deeds.clear()
 	for captain in bubble.sunk:
-		captains.erase(captain)
+		remove_captain(captain)
 	bubble.sunk.clear()
 	if bubble.player_sunk:
 		_shipwreck()
@@ -331,11 +395,17 @@ func step_bubble() -> void:
 
 # Renown and honor.
 
-## Adds a deed to the player's reputation.
+## Adds a deed to the player's reputation, and to their bounties if it was against pirates.
 func reckon(deed: String) -> void:
 	var weight: Array = DEEDS[deed]
 	renown = maxf(renown + weight[0], 0.0)
 	honor = clampf(honor + weight[1], -100.0, 100.0)
+	if deed == "captured_pirate":
+		bounty += BOUNTY_TAKEN
+	elif deed == "sank_pirate":
+		bounty += BOUNTY_SUNK
+	elif deed == "plundered_by_pirates":
+		tell("Pirates have stripped your hold")
 
 
 ## How the world speaks of the player.
@@ -367,6 +437,17 @@ func tell(message: String) -> void:
 
 func _forget(delta: float) -> void:
 	honor = move_toward(honor, 0.0, FORGETTING * delta / Calendar.SECONDS_PER_DAY)
+
+
+## Pirates the navy or the player have accounted for are replaced, one at a time.
+func _replace_pirates(delta: float) -> void:
+	_since_pirate += delta
+	if _since_pirate < PIRATE_DAYS * Calendar.SECONDS_PER_DAY:
+		return
+	_since_pirate = 0.0
+	var pirates := captains.filter(func(captain: Captain) -> bool: return captain.role == Captain.Role.PIRATE)
+	if pirates.size() < PIRATES:
+		_spawn_pirate(0.0)
 
 
 ## Without honor, every navy ship near enough comes after the player; with it back, they stand
@@ -406,13 +487,17 @@ func _shipwreck() -> void:
 
 # Ports.
 
-## Comes in and moors: the ship stops at the port, sails furled.
+## Comes in and moors: the ship stops at the port, sails furled. Bounties owed are paid here.
 func dock(port: Dictionary) -> void:
 	docked = port
 	autopilot = null
 	ship.position = port.position
 	ship.speed = 0.0
 	ship.sail_set = 0.0
+	if bounty > 0.0:
+		tell("The harbor master pays %d reals in bounties for pirates" % roundi(bounty))
+		purse += bounty
+		bounty = 0.0
 
 
 ## Casts off and makes sail, heading away from the land.
@@ -640,6 +725,7 @@ func to_saved() -> Dictionary:
 		"captains": saved_captains,
 		"autopilot": autopilot.to_saved(self) if autopilot != null else {},
 		"random": str(random.state), "news": news, "news_age": news_age,
+		"bounty": bounty, "since_pirate": _since_pirate,
 	}
 
 
@@ -660,6 +746,11 @@ func restore(saved: Dictionary) -> void:
 	captains.clear()
 	for captain_data: Dictionary in saved.captains:
 		captains.append(Captain.from_saved(captain_data, self))
+	# Quarries point at other captains, so they're put back once all the captains are.
+	for index in captains.size():
+		var quarry_index := int(saved.captains[index].quarry)
+		if quarry_index >= 0 and quarry_index < captains.size():
+			captains[index].quarry = captains[quarry_index]
 	autopilot = null
 	if not saved.autopilot.is_empty():
 		autopilot = Captain.from_saved(saved.autopilot, self)
@@ -667,7 +758,8 @@ func restore(saved: Dictionary) -> void:
 		var quarry_index := int(saved.autopilot.quarry)
 		if quarry_index >= 0 and quarry_index < captains.size():
 			autopilot.quarry = captains[quarry_index]
-	# Quarries of the computer captains aren't saved: only the player's crew chases.
+	bounty = saved.get("bounty", 0.0)
+	_since_pirate = saved.get("since_pirate", 0.0)
 	random.state = int(saved.random)
 	news = saved.news
 	news_age = saved.news_age
