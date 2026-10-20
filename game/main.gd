@@ -32,6 +32,10 @@ func _ready() -> void:
 	var view := WorldView.new()
 	view.moored.connect(_save)
 	view.voyage = voyage
+	# Into the scene before any development setup runs: the view follows the voyage every frame,
+	# so it picks up whatever a setup arranges, and an error in a setup can't leave it outside
+	# the scene, holding the voyage alive with nothing to free it.
+	add_child(view)
 	var show_help := false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--screenshot="):
@@ -58,7 +62,8 @@ func _ready() -> void:
 			voyage.step_bubble()
 			voyage.bubble = null
 			voyage.dock(voyage.port_named("Batavia"))
-			voyage.prizes[0].ship.position = voyage.docked.position
+			for prize in voyage.prizes:
+				prize.ship.position = voyage.docked.position
 			view.open_port_tab.call_deferred(3)
 		elif argument == "--pirates":
 			_meet_a_merchant()
@@ -68,7 +73,6 @@ func _ready() -> void:
 			_fight_the_navy()
 		elif argument.begins_with("--port-tab="):
 			view.open_port_tab.call_deferred(argument.trim_prefix("--port-tab=").to_int())
-	add_child(view)
 	if show_help:
 		view.show_help()
 
