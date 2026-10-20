@@ -102,6 +102,11 @@ func _draw() -> void:
 		lines.append("Crew sailing your course")
 	if ship.aground:
 		lines.append("Aground! Steer away from the land")
+	var conditions := voyage.monsoon.weather.conditions_at(ship.position)
+	if not conditions.is_empty():
+		lines.append("%s: wind %d knots" % [conditions, roundi(wind.length() * InterfaceDrawing.KNOTS_PER_METER_PER_SECOND)])
+	if ship.overpressed and voyage.docked.is_empty():
+		lines.append("Too much sail for this wind! S to shorten sail")
 	var moored := not voyage.docked.is_empty()
 	lines.append(_reputation_line())
 	if voyage.bounty > 0.0:
@@ -159,6 +164,8 @@ func _draw_bubble() -> void:
 			roundi(ship.hull * 100.0), roundi(ship.rigging * 100.0), voyage.ship.crew],
 		_guns_line(bubble),
 	]
+	if absf(ship.heel) > Bubble.SAFE_HEEL:
+		lines.append("Heeling dangerously: shorten sail")
 	if ship.backing_headsails:
 		lines.append("Headsails backed")
 	elif ship.aback:

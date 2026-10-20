@@ -76,6 +76,7 @@ func _ready() -> void:
 		"shallows_light_color": Palette.SHALLOWS_LIGHT, "sand_color": Palette.SAND,
 		"grass_color": Palette.GRASS, "forest_color": Palette.FOREST,
 		"forest_dark_color": Palette.FOREST_DARK, "highland_color": Palette.HIGHLAND,
+		"storm_color": Palette.STORM, "rain_color": Palette.RAIN,
 	}
 	for parameter: String in colors:
 		_material.set_shader_parameter(parameter, colors[parameter])
@@ -310,6 +311,7 @@ func _process(delta: float) -> void:
 	_material.set_shader_parameter("wind_strength", clampf(true_wind.length() / 10.0, 0.0, 1.5))
 	_material.set_shader_parameter("water_offset", _water_offset.floor())
 	_material.set_shader_parameter("wave_time", _wave_time)
+	_show_weather(meters_per_pixel)
 	_display.meters_per_pixel = meters_per_pixel
 	var sighting := voyage.nearest_sighting()
 	_display.sighting = sighting if not sighting.is_empty() and sighting.distance < SIGHTING_RANGE else {}
@@ -330,6 +332,25 @@ func _process(delta: float) -> void:
 	else:
 		_pose_ships(meters_per_pixel)
 	queue_redraw()
+
+
+## Hands the shader the squalls and gales on or near the screen, strongest first, at most 8.
+func _show_weather(meters_per_pixel: float) -> void:
+	var reach := get_viewport_rect().size.length() * meters_per_pixel
+	var center := _frame() + _focus()
+	var showing: Array[Vector4] = []
+	for cell in voyage.monsoon.weather.cells:
+		var heart: Vector2 = cell.center
+		if heart.distance_to(center) > reach + cell.radius:
+			continue
+		var on_screen := _to_screen(heart)
+		var strength := sin(PI * clampf(cell.age / cell.life, 0.0, 1.0))
+		showing.append(Vector4(on_screen.x, on_screen.y, cell.radius / meters_per_pixel, strength))
+	showing.sort_custom(func(a: Vector4, b: Vector4) -> bool: return a.w > b.w)
+	var count := mini(showing.size(), 8)
+	showing.resize(8)
+	_material.set_shader_parameter("storms", showing)
+	_material.set_shader_parameter("storm_count", count)
 
 
 ## The screen's top-left pixel in the current frame: the ship at the center, on whole pixels.

@@ -14,7 +14,7 @@ var saving := true
 # opens the port screen on the shipyard or the tavern; --plunder starts alongside a merchant that
 # has just struck; --battle starts trading broadsides with a navy brig; --pirates starts with a
 # pirate sloop closing to board; --prize starts moored in Batavia with a prize brig alongside.
-# Any of these starts a
+# --gale starts at sea in a gale, with a squall coming. Any of these starts a
 # fresh voyage and saves nothing. --new-voyage abandons the saved voyage and starts again.
 var _screenshot_path := ""
 var _screenshot_after := 4.0
@@ -65,6 +65,8 @@ func _ready() -> void:
 			for prize in voyage.prizes:
 				prize.ship.position = voyage.docked.position
 			view.open_port_tab.call_deferred(3)
+		elif argument == "--gale":
+			_into_the_gale()
 		elif argument == "--pirates":
 			_meet_a_merchant()
 			_pirates_close_in()
@@ -75,6 +77,23 @@ func _ready() -> void:
 			view.open_port_tab.call_deferred(argument.trim_prefix("--port-tab=").to_int())
 	if show_help:
 		view.show_help()
+
+
+func _into_the_gale() -> void:
+	voyage.undock()
+	voyage.ship.position = Chart.position_of(-5.2, 107.6)
+	voyage.ship.sail_set = 1.0
+	var monsoon := voyage.monsoon
+	var gale_heart := voyage.ship.position + Vector2(60000.0, 20000.0)
+	var squall_heart := voyage.ship.position + Vector2(-90000.0, -40000.0)
+	monsoon.weather.cells = [
+		{"kind": Weather.Kind.GALE, "center": gale_heart, "velocity": Vector2.ZERO, "radius": 150000.0,
+			"push": 14.0, "direction": monsoon.base_velocity_at(gale_heart).normalized(),
+			"age": 18.0 * 3600.0, "life": 36.0 * 3600.0},
+		{"kind": Weather.Kind.SQUALL, "center": squall_heart, "velocity": Vector2.ZERO, "radius": 14000.0,
+			"push": 10.0, "direction": monsoon.base_velocity_at(squall_heart).normalized(),
+			"age": 1.0 * 3600.0, "life": 2.0 * 3600.0},
+	]
 
 
 func _meet_a_merchant() -> void:
