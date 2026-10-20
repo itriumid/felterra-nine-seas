@@ -88,6 +88,9 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
 - **Run long probes and tools under `timeout`.** A stuck search pegs a core until killed.
 - **The chart (`world/nusantara.png`) is generated.** Change `tools/build_world_map.py` and
   rebuild it; never edit the image. Its constants must match `simulation/chart.gd`.
+- **The font is a submodule**: Itrium Pixel, at `addons/itrium_pixel_font`, from
+  itriumid/pixel-font. Never edit it here; a glyph this game needs is added there, then the
+  submodule is updated to that commit.
 - **File names are lowercase snake_case.** macOS ignores case and Linux doesn't, so a
   mismatched `load()` works on one and crashes on the other. Continuous Integration checks.
 - **Every color comes from `game/palette.gd`.** Don't inline colors.

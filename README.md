@@ -179,6 +179,10 @@ every pixel stays the same size.
 
 ## Development
 
+The font, Itrium Pixel, comes from [its own repository](https://github.com/itriumid/pixel-font)
+as a git submodule, so clone with `--recurse-submodules`, or run `git submodule update --init`
+after cloning.
+
 ```bash
 # Run the tests (import once first on a fresh checkout)
 godot --headless --path . --import

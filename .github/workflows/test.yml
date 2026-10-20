@@ -69,6 +69,9 @@ jobs:
             binary: Godot_v4.7.2-stable_win64_console.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The font is a submodule: Itrium Pixel, shared by the games.
+          submodules: true
       - name: Download Godot
         run: |
           curl --fail --location --silent --show-error --output godot.zip \
