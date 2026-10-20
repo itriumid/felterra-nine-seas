@@ -198,3 +198,29 @@ func test_sailing_to_a_port_ends_moored_there() -> void:
 		if not voyage.docked.is_empty():
 			break
 	check(voyage.docked.get("name", "") == "Cirebon", "moored at %s" % voyage.docked.get("name", "sea"))
+
+
+
+func test_furling_in_a_harbor_moors_even_with_way_on() -> void:
+	# A ship that furls carrying her way would drift out of the harbor before she stopped; the
+	# crew brings her in instead.
+	var voyage := Voyage.new()
+	voyage.undock()
+	var port: Dictionary = voyage.port_named("Semarang")
+	voyage.ship.position = voyage.chart.nearest_water(port.position + Vector2(2000.0, -1500.0))
+	voyage.ship.speed = 3.0
+	voyage.ship.sail_set = 0.0
+	voyage.advance(60.0)
+	check(voyage.docked.get("name", "") == "Semarang", "furled in Semarang's harbor at three meters a second and drifted on")
+
+
+func test_mooring_with_one_command() -> void:
+	var voyage := Voyage.new()
+	voyage.undock()
+	voyage.ship.position = Chart.position_of(-5.6, 107.2)
+	check(voyage.moor() != "", "moored in the open sea")
+	var port: Dictionary = voyage.port_named("Semarang")
+	voyage.ship.position = voyage.chart.nearest_water(port.position + Vector2(3500.0, -2000.0))
+	voyage.ship.sail_set = 1.0
+	check(voyage.moor() == "", "couldn't moor four kilometers off Semarang")
+	check(voyage.docked.get("name", "") == "Semarang", "moored at %s" % voyage.docked.get("name", "sea"))

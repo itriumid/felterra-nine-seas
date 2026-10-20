@@ -149,6 +149,7 @@ func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
 	if route.is_empty():
 		ship.speed = 0.0 if destination.has("name") else ship.speed
 		return true
+	_reef(true_wind, voyage)
 	var wanted: float
 	if ship.aground:
 		# Work off the bank: head straight away from the land.
@@ -158,6 +159,18 @@ func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
 	ship.heading = wrapf(rotate_toward(ship.heading, wanted, TURN_RATE * delta), -PI, PI)
 	ship.step(delta, true_wind, voyage.chart)
 	return false
+
+
+## A captain carries what sail the wind allows. The player's crew, sailing a course for them,
+## only ever shortens sail, never sets more than the player ordered.
+func _reef(true_wind: Vector2, voyage: Voyage) -> void:
+	var prudent := ship.prudent_sail(true_wind.length())
+	if ship == voyage.ship:
+		if ship.sail_set > prudent:
+			ship.sail_set = prudent
+			voyage.tell("The crew shortened sail for the wind")
+	elif ship.sail_set > 0.0:
+		ship.sail_set = prudent
 
 
 ## Where to steer to cut a ship off rather than chase her tail: where she'll be by the time
@@ -313,6 +326,7 @@ func keep_station(delta: float, true_wind: Vector2, voyage: Voyage, place: int) 
 	if route.is_empty():
 		ship.speed = minf(ship.speed, leader.speed)
 		return
+	_reef(true_wind, voyage)
 	ship.heading = wrapf(rotate_toward(ship.heading, _heading_toward(route[0], true_wind, voyage), TURN_RATE * delta), -PI, PI)
 	ship.step(delta, true_wind, voyage.chart)
 

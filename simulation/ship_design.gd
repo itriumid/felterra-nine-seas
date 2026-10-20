@@ -70,6 +70,9 @@ var crew_maximum: int
 var price: int
 ## Gun ports, both sides together; each broadside is half of them.
 var gun_ports: int
+## The strongest wind, in meters a second, she can carry all plain sail in without straining her
+## rigging. In more, sail has to come in: the force on it grows with the square of the wind.
+var full_sail_wind: float
 
 ## A six-pounder on its carriage, with its tackle and shot: about a ton, and it weighs the ship
 ## down like cargo.
@@ -122,6 +125,7 @@ static func sloop() -> ShipDesign:
 	design.crew_maximum = 75
 	design.price = 3000
 	design.gun_ports = 10
+	design.full_sail_wind = 11.0
 	return design
 
 
@@ -162,6 +166,7 @@ static func brig() -> ShipDesign:
 	design.crew_maximum = 140
 	design.price = 14000
 	design.gun_ports = 16
+	design.full_sail_wind = 13.0
 	return design
 
 

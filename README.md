@@ -31,9 +31,25 @@ Merchants trade between the ports and navy squadrons patrol their stations, all 
 same physics as you, so a merchant bound east into the July monsoon zigzags up the coast just
 as a real one did. Sails within 20 kilometers are reported as sighted.
 
+## Weather
+
+On top of the monsoon, weather moves across the chart. Squalls are sudden blows a few
+kilometers to fifteen across that rise to 30 knots or more and die away within a couple of
+hours. They come thickest when the monsoons change, and on southwest-monsoon nights in the
+Malacca Strait, where the Sumatras sweep across from Sumatra. Gales are great areas of strong
+wind a hundred kilometers or more across, blowing for a day or two at the height of a monsoon.
+On the chart they show as dark, rain-streaked cloud drifting with the wind.
+
+Each rig carries full sail only up to a certain wind: about 21 knots for a sloop and 25 for a
+brig. Above that, too much canvas strains the rigging and, slowly, the hull. Your crew shortens
+sail on its own while following a course, but never sets more than you ordered; at the helm,
+press S. Every other ship reefs for the weather too. In a battle, heeling too far strains the
+rigging the same way.
+
 ## Ports and trade
 
-Click a port and your crew sails there and moors, or furl all sail beside one. Moored, the port
+Click a port and your crew sails there and moors, or, within five kilometers of one (its
+harbor), press M or furl all sail and the crew brings her in. Moored, the port
 opens:
 
 - **Market:** nine goods the Nusantara seas traded around 1700, from rice and salt to cloves
@@ -124,6 +140,7 @@ Linux, `~/.local/share`).
 | Click a ship | | Give chase |
 | A and D, or the left and right arrows | Left stick | Take the helm and steer |
 | W and S, or the up and down arrows | Shoulder buttons | Set or take in sail: a sailing ship's only throttle |
+| M | Left stick, pressed | Come in and moor, in a port's harbor |
 | Mouse wheel, or minus and equals | Up and down on the directional pad | Zoom |
 | Space (in a bubble) | B | Fire the broadside facing the nearest ship |
 | C (in a bubble) | Right stick | Change shot: round, chain or grape |

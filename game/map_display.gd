@@ -8,7 +8,7 @@ const HELP_LINES: Array[String] = [
 	"Click a ship: give chase, and fight when you meet",
 	"A and D, or the arrow keys: take the helm and steer",
 	"W and S, or up and down: set or take in sail, to go faster or slower",
-	"Furl all sail by a port to come in and moor",
+	"M, or furl all sail, within a port's harbor: come in and moor",
 	"Minus and equals, or the mouse wheel: zoom",
 	"F11: full screen",
 	"H: close this help",
@@ -93,12 +93,20 @@ func _draw() -> void:
 	]
 	if not voyage.prizes.is_empty():
 		lines.append("Prizes in company: %d" % voyage.prizes.size())
+	var harbor := voyage.harbor_here()
 	if not voyage.docked.is_empty():
 		lines.append("Moored in %s" % voyage.docked.name)
+	elif not harbor.is_empty():
+		lines.append("%s is close: press M to come in and moor" % harbor.name)
 	elif voyage.autopilot != null:
 		lines.append("Crew sailing your course")
 	if ship.aground:
 		lines.append("Aground! Steer away from the land")
+	var conditions := voyage.monsoon.weather.conditions_at(ship.position)
+	if not conditions.is_empty():
+		lines.append("%s: wind %d knots" % [conditions, roundi(wind.length() * InterfaceDrawing.KNOTS_PER_METER_PER_SECOND)])
+	if ship.overpressed and voyage.docked.is_empty():
+		lines.append("Too much sail for this wind! S to shorten sail")
 	var moored := not voyage.docked.is_empty()
 	lines.append(_reputation_line())
 	if voyage.bounty > 0.0:
@@ -121,6 +129,8 @@ func _draw() -> void:
 	if meters_per_pixel < 1.0:
 		scale_text = "%d pixels: 1 meter" % roundi(1.0 / meters_per_pixel)
 	InterfaceDrawing.text_panel(self, corner, ["%s   %s   H for help" % [scale_text, _time_text()]], true, true)
+	if not _notice_line().is_empty():
+		InterfaceDrawing.text_panel(self, Vector2(InterfaceDrawing.MARGIN, size.y - InterfaceDrawing.MARGIN), [_notice_line()], false, true)
 	if show_help:
 		InterfaceDrawing.centered_panel(self, size, HELP_LINES)
 
@@ -154,6 +164,8 @@ func _draw_bubble() -> void:
 			roundi(ship.hull * 100.0), roundi(ship.rigging * 100.0), voyage.ship.crew],
 		_guns_line(bubble),
 	]
+	if absf(ship.heel) > Bubble.SAFE_HEEL:
+		lines.append("Heeling dangerously: shorten sail")
 	if ship.backing_headsails:
 		lines.append("Headsails backed")
 	elif ship.aback:

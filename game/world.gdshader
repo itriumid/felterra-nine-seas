@@ -37,6 +37,12 @@ uniform vec4 grass_color : source_color;
 uniform vec4 forest_color : source_color;
 uniform vec4 forest_dark_color : source_color;
 uniform vec4 highland_color : source_color;
+uniform vec4 storm_color : source_color;
+uniform vec4 rain_color : source_color;
+// Squalls and gales on screen: center and radius in screen pixels, and how hard each blows
+// right now, 0 to 1.
+uniform vec4 storms[8];
+uniform int storm_count = 0;
 
 float lattice(ivec2 cell) {
 	uint hash_value = uint(cell.x) * 374761393u + uint(cell.y) * 668265263u;
@@ -179,6 +185,34 @@ void fragment() {
 					color = crest_color;
 				}
 			}
+		}
+	}
+	// Under a squall or gale the light goes and the rain comes: the scene is dithered toward
+	// the storm's shadow, thicker toward its heart, and streaked with rain driving with the wind.
+	float storm = 0.0;
+	for (int index = 0; index < storm_count; index++) {
+		vec4 cell = storms[index];
+		float reach = distance(screen, cell.xy);
+		if (reach < cell.z) {
+			float across_cell = 1.0 - pow(reach / cell.z, 2.0);
+			// Ragged, uneven cloud rather than a disc: noise fixed to the storm, so its shape
+			// travels with it.
+			vec2 within = (screen - cell.xy) / max(cell.z * 0.28, 5.0) + float(index) * 13.1;
+			float ragged = smooth_noise(within) * 0.7 + smooth_noise(within * 2.7 + 5.3) * 0.5;
+			storm = max(storm, across_cell * cell.w * ragged * 1.4);
+		}
+	}
+	if (storm > 0.12) {
+		int pattern = int(mod(screen.x, 2.0)) + 2 * int(mod(screen.y, 2.0));
+		bool shaded = storm > 0.45 ? (pattern == 0 || pattern == 3) : pattern == 0;
+		if (shaded) {
+			color = storm_color;
+		}
+		vec2 sideways = vec2(-wind_direction.y, wind_direction.x);
+		vec2 driving = vec2(dot(screen, wind_direction), dot(screen, sideways));
+		float streak = smooth_noise(vec2((driving.x - wave_time * 90.0) / 5.0, driving.y / 1.2));
+		if (streak > 0.93 - storm * 0.12) {
+			color = rain_color;
 		}
 	}
 	COLOR = color;

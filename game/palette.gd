@@ -29,6 +29,10 @@ const SPAR := Color("6b4a33")
 const SAIL := Color("efe6d2")
 const SAIL_SHADOW := Color("c9bca0")
 
+# Weather: the shadow of a squall or gale over sea and land, and its rain.
+const STORM := Color("16222e")
+const RAIN := Color("9fb7c4")
+
 # Gunnery: smoke thinning as it drifts, the flash of a gun, and the balls themselves.
 const SMOKE := Color("e4e2d8")
 const SMOKE_FADING := Color("b0b4b0")
