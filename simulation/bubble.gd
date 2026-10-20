@@ -67,8 +67,10 @@ var surrender_odds := SURRENDER_ODDS
 ## What the player did in here that the world will remember: event names for the voyage's
 ## reckoning of renown and honor, taken and cleared by the voyage.
 var deeds: Array[String] = []
-## Ships sunk in here, by captain; and whether the player's own went down.
+## Ships sunk in here, by captain; ships taken as prizes, to sail in company with the player;
+## and whether the player's own went down.
 var sunk: Array[Captain] = []
+var prizes_taken: Array[Captain] = []
 var player_sunk := false
 ## Within this range a navy ship turns to bring its broadside to bear; closer than this it
 ## bears away a little, to keep its guns clear and not be boarded.
@@ -236,6 +238,42 @@ func _strikes(captain: Captain) -> bool:
 		Captain.Role.PIRATE:
 			return _attackers >= _defenders * PIRATE_SURRENDER_ODDS
 	return false
+
+
+## How many of the player's sailors a prize crew for the ship alongside would take: her minimum,
+## or as many as the player can spare while keeping their own ship sailable. Zero if none.
+func prize_crew_size() -> int:
+	if prize() == null:
+		return 0
+	var spare := player_map_ship.crew - player_map_ship.design.crew_minimum
+	return clampi(captains[grappled].ship.design.crew_minimum, 0, maxi(spare, 0))
+
+
+## Puts a prize crew aboard the ship that has struck and takes her: her own crew are set adrift
+## in their boats, and she sails in company with the player from now on.
+func take_as_prize() -> String:
+	if prize() == null:
+		return "There's no ship that has struck to you"
+	var crew := prize_crew_size()
+	if crew < 4:
+		return "You can't spare a prize crew without leaving your own ship short"
+	var index := grappled
+	var captain := captains[index]
+	player_map_ship.crew -= crew
+	captain.ship.crew = crew
+	captain.consort = true
+	captain.hostile = false
+	captain.hunting = false
+	captain.quarry = null
+	_return(ships[index], captain.ship)
+	captain.in_bubble = false
+	prizes_taken.append(captain)
+	ships.remove_at(index)
+	captains.remove_at(index)
+	grappled = -1
+	boarding = Boarding.NONE
+	deeds.append("took_prize")
+	return ""
 
 
 ## Cuts the grapples. After a capture, the plundered ship goes on its way.

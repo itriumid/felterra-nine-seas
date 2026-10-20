@@ -51,6 +51,13 @@ var hunting := false
 ## A pirate's lair, as {name, position}, and how long it has left on its hunting ground.
 var lair := {}
 var loiter_for := 0.0
+## A prize the player took, sailed by a prize crew of the player's own, keeping station astern;
+## and whether she has yet been brought into port.
+var consort := false
+var brought_in := false
+
+## Meters astern of the player that each prize keeps station.
+const STATION := 800.0
 
 ## Pirates spot prey this far off, and take a merchant they catch this close.
 const SIGHT := 25000.0
@@ -287,6 +294,29 @@ func _pursue_pirates(voyage: Voyage) -> void:
 		replan = true
 
 
+## A prize keeps station astern of the player, one station further back for each prize ahead of
+## her, and lies at her moorings while the player is in port.
+func keep_station(delta: float, true_wind: Vector2, voyage: Voyage, place: int) -> void:
+	if not voyage.docked.is_empty():
+		ship.speed = 0.0
+		return
+	var leader := voyage.ship
+	# The prize crew makes sail if she came out of the fight with it furled.
+	if ship.sail_set <= 0.0:
+		ship.sail_set = 1.0
+	var station := leader.position - leader.forward() * STATION * (place + 1)
+	if voyage.chart.is_land(station):
+		station = leader.position
+	_follow(station, delta, voyage)
+	while not route.is_empty() and ship.position.distance_to(route[0]) < REACHED_RADIUS:
+		route.pop_front()
+	if route.is_empty():
+		ship.speed = minf(ship.speed, leader.speed)
+		return
+	ship.heading = wrapf(rotate_toward(ship.heading, _heading_toward(route[0], true_wind, voyage), TURN_RATE * delta), -PI, PI)
+	ship.step(delta, true_wind, voyage.chart)
+
+
 ## A rough measure of a ship's fighting power: her crew, and her guns as long as her hull holds.
 func strength() -> float:
 	return ship.crew + 8.0 * ship.guns * ship.hull
@@ -411,6 +441,7 @@ func to_saved(voyage: Voyage) -> Dictionary:
 		"replan": replan, "struck": struck, "hostile": hostile, "hunting": hunting,
 		"beating": _beating, "since_route": _since_route,
 		"lair": lair.get("name", ""), "loiter_for": loiter_for,
+		"consort": consort, "brought_in": brought_in,
 		"quarry": voyage.captains.find(quarry) if quarry != null else -1,
 	}
 
@@ -435,4 +466,6 @@ static func from_saved(saved: Dictionary, voyage: Voyage) -> Captain:
 	captain._since_route = saved.since_route
 	captain.lair = voyage.lair_named(saved.get("lair", ""))
 	captain.loiter_for = saved.get("loiter_for", 0.0)
+	captain.consort = saved.get("consort", false)
+	captain.brought_in = saved.get("brought_in", false)
 	return captain
