@@ -23,6 +23,8 @@ var navigation := Navigation.new(chart)
 var random := RandomNumberGenerator.new()
 ## Every computer-controlled ship at sea or in port.
 var captains: Array[Captain] = []
+## Ships the player has taken as prizes, sailing in company with prize crews of the player's own.
+var prizes: Array[Captain] = []
 ## The player's crew sailing to a chosen point, or null while the player has the helm.
 var autopilot: Captain
 ## The battle bubble the player is in, or null on the open map.
@@ -47,6 +49,11 @@ var news_age := 0.0
 var lairs: Array[Dictionary] = []
 var bounty := 0.0
 var _since_pirate := 0.0
+
+## A prize within this many meters of the player is in company: she comes into port with them.
+const PRIZE_COMPANY := 30000.0
+## What a shipyard pays for a prize, against a new ship's price, when her hull is sound.
+const PRIZE_SHARE := 0.5
 
 ## Islands pirates actually hid among: the Riau islands south of Singapura, Belitung, and the
 ## Karimata islands off Borneo.
@@ -78,6 +85,8 @@ const DEEDS := {
 	"captured_pirate": [10.0, 5.0],
 	"sank_pirate": [6.0, 3.0],
 	"plundered_by_pirates": [-3.0, 0.0],
+	"took_prize": [2.0, 0.0],
+	"brought_in_prize": [3.0, 0.0],
 }
 ## Below this honor the navy hunts the player.
 const HUNTED_BELOW := -20.0
@@ -261,7 +270,14 @@ func set_course(target: Vector2) -> bool:
 	if crew.route.is_empty():
 		return false
 	autopilot = crew
+	_make_sail()
 	return true
+
+
+## Given a course with all sail furled (after a fight, say), the crew makes sail first.
+func _make_sail() -> void:
+	if ship.sail_set <= 0.0:
+		ship.sail_set = 1.0
 
 
 ## Has the crew give chase to another ship. Meeting it opens a bubble.
@@ -272,6 +288,7 @@ func chase(captain: Captain) -> void:
 	crew.ship = ship
 	crew.quarry = captain
 	autopilot = crew
+	_make_sail()
 
 
 func take_helm() -> void:
@@ -316,6 +333,8 @@ func advance(delta: float) -> void:
 	news_age += delta
 	for captain in captains:
 		captain.update(delta, monsoon.velocity_at(captain.ship.position), self)
+	for place in prizes.size():
+		prizes[place].keep_station(delta, monsoon.velocity_at(prizes[place].ship.position), self, place)
 	if bubble == null:
 		_check_for_meeting()
 
@@ -385,6 +404,11 @@ func step_bubble() -> void:
 	for captain in bubble.sunk:
 		remove_captain(captain)
 	bubble.sunk.clear()
+	for captain in bubble.prizes_taken:
+		remove_captain(captain)
+		prizes.append(captain)
+		tell("Your prize crew has her: she'll follow you into port")
+	bubble.prizes_taken.clear()
 	if bubble.player_sunk:
 		_shipwreck()
 		return
@@ -498,6 +522,15 @@ func dock(port: Dictionary) -> void:
 		tell("The harbor master pays %d reals in bounties for pirates" % roundi(bounty))
 		purse += bounty
 		bounty = 0.0
+	# Prizes in company come in and moor alongside.
+	for prize in prizes:
+		if prize.ship.position.distance_to(port.position) < PRIZE_COMPANY:
+			prize.ship.position = port.position
+			prize.ship.speed = 0.0
+			prize.route.clear()
+			if not prize.brought_in:
+				prize.brought_in = true
+				reckon("brought_in_prize")
 
 
 ## Casts off and makes sail, heading away from the land.
@@ -637,6 +670,74 @@ func scrape() -> String:
 	return ""
 
 
+## What a prize fetches in this port: the ship at the shipyard, her cargo at the market.
+func prize_value(prize: Captain) -> float:
+	var value := prize.ship.design.price * PRIZE_SHARE * prize.ship.hull
+	var port_market := market()
+	if port_market != null:
+		for id: String in prize.ship.hold:
+			value += port_market.proceeds_from_selling(id, prize.ship.hold[id])
+	return value
+
+
+func _prize_in_port(index: int) -> String:
+	if docked.is_empty():
+		return "Prizes are sold in port"
+	if index < 0 or index >= prizes.size():
+		return "There's no such prize"
+	if prizes[index].ship.position.distance_to(docked.position) > 1.0:
+		return "She hasn't come in yet"
+	return ""
+
+
+## Sells a prize, ship and cargo; her prize crew comes back aboard, or to the tavern if there's
+## no room for them.
+func sell_prize(index: int) -> String:
+	var refusal := _prize_in_port(index)
+	if not refusal.is_empty():
+		return refusal
+	var prize := prizes[index]
+	purse += prize_value(prize)
+	var port_market := market()
+	for id: String in prize.ship.hold:
+		port_market.put(id, prize.ship.hold[id])
+	_take_back_crew(prize.ship.crew)
+	prizes.remove_at(index)
+	return ""
+
+
+## Moves into a prize and makes her the player's ship; the old one is sold to the shipyard.
+func make_prize_flagship(index: int) -> String:
+	var refusal := _prize_in_port(index)
+	if not refusal.is_empty():
+		return refusal
+	var prize := prizes[index]
+	var cargo := ship.cargo_tons() + prize.ship.cargo_tons()
+	if cargo > prize.ship.design.cargo_capacity:
+		return "Your cargo and hers won't both fit in her hold"
+	purse += trade_in_value()
+	var flagship := prize.ship
+	for id: String in ship.hold:
+		flagship.hold[id] = flagship.hold.get(id, 0) + ship.hold[id]
+	var crew := ship.crew + flagship.crew
+	flagship.crew = 0
+	flagship.position = ship.position
+	flagship.sail_set = 0.0
+	ship = flagship
+	_take_back_crew(crew)
+	design_index = designs.find_custom(func(each: ShipDesign) -> bool: return each.id == flagship.design.id)
+	prizes.remove_at(index)
+	return ""
+
+
+func _take_back_crew(count: int) -> void:
+	var berths := ship.design.crew_maximum - ship.crew
+	var aboard := mini(count, berths)
+	ship.crew += aboard
+	if not docked.is_empty():
+		taverns[docked.name] = taverns.get(docked.name, 0) + count - aboard
+
+
 func trade_in_value() -> float:
 	return ship.design.price * TRADE_IN_SHARE * ship.hull
 
@@ -694,7 +795,11 @@ func _fill_taverns(delta: float) -> void:
 ## Wages fall due every day. Unpaid sailors desert, one a day.
 func _pay_crew(delta: float) -> void:
 	var days := delta / Calendar.SECONDS_PER_DAY
-	purse -= ship.crew * WAGE * days
+	# Prize crews are the player's own sailors, and draw their pay.
+	var sailors := ship.crew
+	for prize in prizes:
+		sailors += prize.ship.crew
+	purse -= sailors * WAGE * days
 	if purse >= 0.0:
 		_unpaid_days = 0.0
 		return
@@ -723,6 +828,7 @@ func to_saved() -> Dictionary:
 		"docked": docked.get("name", ""), "unpaid_days": _unpaid_days,
 		"markets": saved_markets, "taverns": taverns.duplicate(),
 		"captains": saved_captains,
+		"prizes": prizes.map(func(prize: Captain) -> Dictionary: return prize.to_saved(self)),
 		"autopilot": autopilot.to_saved(self) if autopilot != null else {},
 		"random": str(random.state), "news": news, "news_age": news_age,
 		"bounty": bounty, "since_pirate": _since_pirate,
@@ -751,6 +857,9 @@ func restore(saved: Dictionary) -> void:
 		var quarry_index := int(saved.captains[index].quarry)
 		if quarry_index >= 0 and quarry_index < captains.size():
 			captains[index].quarry = captains[quarry_index]
+	prizes.clear()
+	for prize_data: Dictionary in saved.get("prizes", []):
+		prizes.append(Captain.from_saved(prize_data, self))
 	autopilot = null
 	if not saved.autopilot.is_empty():
 		autopilot = Captain.from_saved(saved.autopilot, self)

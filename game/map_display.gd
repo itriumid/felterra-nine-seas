@@ -91,6 +91,8 @@ func _draw() -> void:
 		"%s, sails %d%%" % [InterfaceDrawing.point_of_sail(angle, ship.speed), roundi(ship.sail_set * 100.0)],
 		"%s, %s" % [nearest.name, InterfaceDrawing.distance_text(ship.position.distance_to(nearest.position))],
 	]
+	if not voyage.prizes.is_empty():
+		lines.append("Prizes in company: %d" % voyage.prizes.size())
 	if not voyage.docked.is_empty():
 		lines.append("Moored in %s" % voyage.docked.name)
 	elif voyage.autopilot != null:

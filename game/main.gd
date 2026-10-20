@@ -13,7 +13,8 @@ var saving := true
 # --bubble starts in a bubble with a merchant brig half a kilometer away; --port-tab=<1 or 2>
 # opens the port screen on the shipyard or the tavern; --plunder starts alongside a merchant that
 # has just struck; --battle starts trading broadsides with a navy brig; --pirates starts with a
-# pirate sloop closing to board. Any of these starts a
+# pirate sloop closing to board; --prize starts moored in Batavia with a prize brig alongside.
+# Any of these starts a
 # fresh voyage and saves nothing. --new-voyage abandons the saved voyage and starts again.
 var _screenshot_path := ""
 var _screenshot_after := 4.0
@@ -31,6 +32,10 @@ func _ready() -> void:
 	var view := WorldView.new()
 	view.moored.connect(_save)
 	view.voyage = voyage
+	# Into the scene before any development setup runs: the view follows the voyage every frame,
+	# so it picks up whatever a setup arranges, and an error in a setup can't leave it outside
+	# the scene, holding the voyage alive with nothing to free it.
+	add_child(view)
 	var show_help := false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--screenshot="):
@@ -50,6 +55,16 @@ func _ready() -> void:
 		elif argument == "--plunder":
 			_meet_a_merchant()
 			_take_her()
+		elif argument == "--prize":
+			_meet_a_merchant()
+			_take_her()
+			voyage.bubble.take_as_prize()
+			voyage.step_bubble()
+			voyage.bubble = null
+			voyage.dock(voyage.port_named("Batavia"))
+			for prize in voyage.prizes:
+				prize.ship.position = voyage.docked.position
+			view.open_port_tab.call_deferred(3)
 		elif argument == "--pirates":
 			_meet_a_merchant()
 			_pirates_close_in()
@@ -58,7 +73,6 @@ func _ready() -> void:
 			_fight_the_navy()
 		elif argument.begins_with("--port-tab="):
 			view.open_port_tab.call_deferred(argument.trim_prefix("--port-tab=").to_int())
-	add_child(view)
 	if show_help:
 		view.show_help()
 
@@ -112,6 +126,8 @@ func _take_her() -> void:
 	var bubble := voyage.bubble
 	voyage.ship.crew = 40
 	voyage.captains.back().ship.hold = {"spices": 8, "porcelain": 25}
+	# Few enough to strike at once, so there's a prize to show.
+	voyage.captains.back().ship.crew = 12
 	bubble.ships[0].position = bubble.player.position + bubble.player.forward().orthogonal() * 9.0
 	bubble.ships[0].heading = bubble.player.heading
 	bubble.ships[0].velocity = bubble.player.velocity
