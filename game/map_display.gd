@@ -8,7 +8,7 @@ const HELP_LINES: Array[String] = [
 	"Click a ship: give chase, and fight when you meet",
 	"A and D, or the arrow keys: take the helm and steer",
 	"W and S, or up and down: set or take in sail, to go faster or slower",
-	"Furl all sail by a port to come in and moor",
+	"M, or furl all sail, within a port's harbor: come in and moor",
 	"Minus and equals, or the mouse wheel: zoom",
 	"F11: full screen",
 	"H: close this help",
@@ -93,8 +93,11 @@ func _draw() -> void:
 	]
 	if not voyage.prizes.is_empty():
 		lines.append("Prizes in company: %d" % voyage.prizes.size())
+	var harbor := voyage.harbor_here()
 	if not voyage.docked.is_empty():
 		lines.append("Moored in %s" % voyage.docked.name)
+	elif not harbor.is_empty():
+		lines.append("%s is close: press M to come in and moor" % harbor.name)
 	elif voyage.autopilot != null:
 		lines.append("Crew sailing your course")
 	if ship.aground:
@@ -121,6 +124,8 @@ func _draw() -> void:
 	if meters_per_pixel < 1.0:
 		scale_text = "%d pixels: 1 meter" % roundi(1.0 / meters_per_pixel)
 	InterfaceDrawing.text_panel(self, corner, ["%s   %s   H for help" % [scale_text, _time_text()]], true, true)
+	if not _notice_line().is_empty():
+		InterfaceDrawing.text_panel(self, Vector2(InterfaceDrawing.MARGIN, size.y - InterfaceDrawing.MARGIN), [_notice_line()], false, true)
 	if show_help:
 		InterfaceDrawing.centered_panel(self, size, HELP_LINES)
 

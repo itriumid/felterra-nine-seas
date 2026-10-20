@@ -108,10 +108,10 @@ const SIGNING_BOUNTY := 5.0
 ## How many sailors a tavern can have looking for a berth, and how many turn up a day.
 const TAVERN_LIMIT := 40
 const SAILORS_A_DAY := 4.0
-## A ship within this many meters of a port, sails furled and all but stopped, comes in and
-## moors.
-const DOCKING_RANGE := 3000.0
-const DOCKING_SPEED := 0.5
+## A port's harbor: within this many meters, a ship that furls its sails comes in and moors.
+## At the chart's scale the crew brings her in with anchors and warps rather than waiting for
+## her to drift to a stop, which could carry her back out of the harbor first.
+const HARBOR_RANGE := 5000.0
 ## What a shipyard charges: to make good a whole hull, as a share of the ship's price; to haul
 ## the ship out and scrape its bottom; and what it gives for a ship traded in, when sound.
 const REPAIR_SHARE := 0.3
@@ -773,14 +773,34 @@ func buy_ship(design: ShipDesign) -> String:
 	return ""
 
 
-## Moors the ship when it has come into a harbor, furled its sails and stopped.
+## Moors the ship when she has furled her sails in a harbor.
 func _check_for_mooring() -> void:
-	if ship.sail_set > 0.0 or ship.speed > DOCKING_SPEED:
+	if ship.sail_set > 0.0:
 		return
+	var port := harbor_here()
+	if not port.is_empty():
+		dock(port)
+
+
+## The port whose harbor the ship is in, or empty.
+func harbor_here() -> Dictionary:
 	for port in ports:
-		if ship.position.distance_to(port.position) <= DOCKING_RANGE:
-			dock(port)
-			return
+		if ship.position.distance_to(port.position) <= HARBOR_RANGE:
+			return port
+	return {}
+
+
+## Comes in and moors at the port whose harbor the ship is in.
+func moor() -> String:
+	if not docked.is_empty():
+		return "You're already moored"
+	if bubble != null:
+		return "Not in the middle of a fight"
+	var port := harbor_here()
+	if port.is_empty():
+		return "There's no harbor here: sail within %d kilometers of a port" % roundi(HARBOR_RANGE / 1000.0)
+	dock(port)
+	return ""
 
 
 func _fill_taverns(delta: float) -> void:

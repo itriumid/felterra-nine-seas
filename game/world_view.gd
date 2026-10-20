@@ -147,6 +147,8 @@ func _read_controls(delta: float) -> void:
 			voyage.sail_to_port(port)
 		else:
 			voyage.set_course(_origin() + mouse * ZOOM_LEVELS[zoom_index])
+	if Input.is_action_just_pressed("moor"):
+		_display.notice(voyage.moor())
 	if Input.is_action_just_pressed("more_sail"):
 		voyage.ship.sail_set = minf(snappedf(voyage.ship.sail_set + 0.25, 0.25), 1.0)
 	if Input.is_action_just_pressed("less_sail"):

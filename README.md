@@ -33,7 +33,8 @@ as a real one did. Sails within 20 kilometers are reported as sighted.
 
 ## Ports and trade
 
-Click a port and your crew sails there and moors, or furl all sail beside one. Moored, the port
+Click a port and your crew sails there and moors, or, within five kilometers of one (its
+harbor), press M or furl all sail and the crew brings her in. Moored, the port
 opens:
 
 - **Market:** nine goods the Nusantara seas traded around 1700, from rice and salt to cloves
@@ -124,6 +125,7 @@ Linux, `~/.local/share`).
 | Click a ship | | Give chase |
 | A and D, or the left and right arrows | Left stick | Take the helm and steer |
 | W and S, or the up and down arrows | Shoulder buttons | Set or take in sail: a sailing ship's only throttle |
+| M | Left stick, pressed | Come in and moor, in a port's harbor |
 | Mouse wheel, or minus and equals | Up and down on the directional pad | Zoom |
 | Space (in a bubble) | B | Fire the broadside facing the nearest ship |
 | C (in a bubble) | Right stick | Change shot: round, chain or grape |
