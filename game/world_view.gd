@@ -83,6 +83,9 @@ func _ready() -> void:
 	var sea := ColorRect.new()
 	sea.material = _material
 	sea.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Let the mouse through: a click on the map sets a course only when no control is under the
+	# pointer, and the sea covers the whole screen.
+	sea.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sea_layer.add_child(sea)
 
 	_interface_layer = CanvasLayer.new()
