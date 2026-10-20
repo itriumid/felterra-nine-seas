@@ -185,12 +185,12 @@ func _spawn_traffic() -> void:
 		captains.append(captain)
 
 
-## The nearest other ship at sea and how far it is, or an empty result.
+## The nearest other ship at sea in sight, and how far it is, or an empty result.
 func nearest_sighting() -> Dictionary:
 	var nearest := {}
 	var nearest_distance := INF
 	for captain in captains:
-		if not captain.at_sea():
+		if not captain.at_sea() or not monsoon.weather.in_sight(ship.position, captain.ship.position):
 			continue
 		var distance := ship.position.distance_to(captain.ship.position)
 		if distance < nearest_distance:
@@ -347,7 +347,9 @@ func _check_for_meeting() -> void:
 		and ship.position.distance_to(autopilot.quarry.ship.position) <= Bubble.OPEN_RANGE
 	var hunted := false
 	for captain in captains:
-		if captain.hunting and captain.at_sea() and captain.ship.position.distance_to(ship.position) <= Bubble.OPEN_RANGE:
+		# A hunter has to see her to fall on her: in thick rain she can pass close by unseen.
+		if captain.hunting and captain.at_sea() and captain.ship.position.distance_to(ship.position) <= Bubble.OPEN_RANGE \
+				and monsoon.weather.in_sight(captain.ship.position, ship.position):
 			hunted = true
 	if not chased and not hunted:
 		return
@@ -481,10 +483,10 @@ func _send_the_navy() -> void:
 	for captain in captains:
 		if captain.role != Captain.Role.NAVY or captain.in_bubble:
 			continue
-		if hunted() and captain.at_sea() and captain.ship.position.distance_to(ship.position) < HUNT_RANGE:
+		if hunted() and captain.at_sea() and captain.given_up_for <= 0.0 \
+				and captain.ship.position.distance_to(ship.position) < HUNT_RANGE:
 			if not captain.hunting:
-				captain.hunting = true
-				captain.hostile = true
+				captain.start_hunting(self)
 				tell("Navy ships are hunting you")
 		elif captain.hunting and not hunted():
 			captain.hunting = false
