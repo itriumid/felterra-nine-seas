@@ -90,7 +90,10 @@ throw the grapples. Then it's numbers, by Lanchester's square law: each side los
 in proportion to the other side's, so a big crew wins fast and cheaply, which is why pirate
 sloops sailed crammed. Merchants outnumbered two to one strike their colors at once; navy crews
 fight. Boarders who fall below four in ten of those who went over are thrown back. Take what
-you want from a ship that has struck, then cast off. Sail more than 6 kilometers clear
+you want from a ship that has struck, then cast off; or take her as a prize. A prize crew of
+your own sailors (her minimum crew, or as many as you can spare) sails her in company with you,
+keeping station astern, and into port, where you can sell her and her cargo or move into her
+and sell your old ship. Prize crews draw their wages like any other sailor. Sail more than 6 kilometers clear
 and the bubble closes. The world outside doesn't wait: a bubble's minutes are the world's
 hours, as they'd have to be with other players sharing it.
 
