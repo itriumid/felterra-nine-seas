@@ -27,6 +27,13 @@ var guns := 0
 ## only that share of its sail.
 var rigging := 1.0
 
+## Set when she's carrying more sail than the wind allows, and straining for it.
+var overpressed := false
+## How fast a ship carrying too much sail wears out, per hour, for each time over what she can
+## stand: blown-out sails and sprung spars, and the hull working under the strain.
+const RIGGING_STRAIN := 0.2
+const HULL_STRAIN := 0.03
+
 ## Days at sea for a clean hull to foul enough to double its friction. Tropical water is hard on
 ## a wooden bottom; ships were hauled out and scraped every few months.
 const FOULING_DAYS := 60.0
@@ -60,6 +67,13 @@ func cargo_load() -> float:
 
 
 ## The sail the crew can actually handle: short of the minimum crew, not all of it.
+## The most sail she can carry in a wind without straining, rounded down to a quarter: the
+## force on the sails grows with the square of the wind.
+func prudent_sail(wind_speed: float) -> float:
+	var limit := pow(design.full_sail_wind / maxf(wind_speed, 0.1), 2.0)
+	return clampf(floorf(limit * 4.0) / 4.0, 0.25, 1.0)
+
+
 func handled_sail() -> float:
 	return minf(minf(sail_set, float(crew) / design.crew_minimum), rigging)
 
@@ -76,6 +90,13 @@ func step(delta: float, true_wind: Vector2, chart: Chart) -> void:
 	var polar := maxf(Polar.lookup(design.id, angle_off_wind, true_wind.length(), cargo_load()), 0.0)
 	var target := polar * sqrt(handled_sail()) / sqrt(1.0 + 0.5 * fouling)
 	fouling += delta / (FOULING_DAYS * Calendar.SECONDS_PER_DAY)
+	# Too much sail for the wind strains the rigging, and in the worst of it the hull.
+	var pressure := handled_sail() * pow(true_wind.length() / design.full_sail_wind, 2.0)
+	overpressed = pressure > 1.0
+	if overpressed:
+		var hours := delta / 3600.0
+		rigging = maxf(rigging - (pressure - 1.0) * RIGGING_STRAIN * hours, 0.1)
+		hull = maxf(hull - (pressure - 1.0) * HULL_STRAIN * hours, 0.1)
 	speed = lerpf(speed, target, 1.0 - exp(-delta / SETTLING_TIME))
 	var next := position + forward() * speed * delta
 	aground = chart.is_land(next)

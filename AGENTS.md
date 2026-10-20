@@ -76,8 +76,10 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
   and converts to world positions only at its edges. Tests for motion check the distance
   moved, not just the heading.
 - **Anything that changes what happens next is saved.** New state goes into the matching
-  `to_saved` and `restore` or `from_saved`, and if the save's shape changes, bump
-  `SaveGame.VERSION`. `tests/test_saving.gd` runs a saved voyage and its loaded copy side by
+  `to_saved` and `restore` or `from_saved`. A new field that older saves can do without is
+  read with a default (`saved.get("field", default)`), so players keep their voyages; bump
+  `SaveGame.VERSION` only when an older save could no longer be read correctly, because a
+  bump sets every existing save aside. `tests/test_saving.gd` runs a saved voyage and its loaded copy side by
   side and fails if they drift apart, which is how a forgotten field shows up. Development flags
   never load or write the real save.
 - **Generated tables:** `simulation/polar_table.gd` (from the sailing model) and
@@ -92,7 +94,6 @@ the Compatibility renderer. It ships for desktop: Windows, macOS and Linux.
 - **Pixels stay one size.** Zoom by changing pixels per meter, never by scaling the camera or a
   node, and draw on the low-resolution screen.
 - **To see the game without playing it**, run
-  `godot --path . -- --screenshot=<path>.png --screenshot-after=8` (add `--bubble`, `--plunder`, `--battle`, `--pirates`, `--prize`, `--brig`,
   `--help-overlay`, `--zoom=<level>`, `--day=<day of the year>` or `--port-tab=<1 or 2>`). It opens a window, saves one
   640 by 360 frame, and quits. The window takes keyboard focus, so warn whoever is at the
   machine first. Check its log for `SCRIPT ERROR`: an error in a development flag leaves the

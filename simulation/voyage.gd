@@ -323,6 +323,7 @@ func advance(delta: float) -> void:
 	else:
 		ship.step(delta, wind, chart)
 		_check_for_mooring()
+	monsoon.weather.advance(delta, monsoon, chart, random)
 	for market in markets.values():
 		market.advance(delta)
 	_fill_taverns(delta)
@@ -852,6 +853,7 @@ func to_saved() -> Dictionary:
 		"autopilot": autopilot.to_saved(self) if autopilot != null else {},
 		"random": str(random.state), "news": news, "news_age": news_age,
 		"bounty": bounty, "since_pirate": _since_pirate,
+		"weather": monsoon.weather.to_saved(),
 	}
 
 
@@ -887,6 +889,7 @@ func restore(saved: Dictionary) -> void:
 		var quarry_index := int(saved.autopilot.quarry)
 		if quarry_index >= 0 and quarry_index < captains.size():
 			autopilot.quarry = captains[quarry_index]
+	monsoon.weather.restore(saved.get("weather", []))
 	bounty = saved.get("bounty", 0.0)
 	_since_pirate = saved.get("since_pirate", 0.0)
 	random.state = int(saved.random)

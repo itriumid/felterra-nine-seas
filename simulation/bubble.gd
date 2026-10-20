@@ -72,6 +72,10 @@ var deeds: Array[String] = []
 var sunk: Array[Captain] = []
 var prizes_taken: Array[Captain] = []
 var player_sunk := false
+## Heeling past this, in radians (about 29 degrees), strains masts and rigging; the further
+## past, the harder.
+const SAFE_HEEL := 0.5
+const HEEL_STRAIN := 0.03
 ## Within this range a navy ship turns to bring its broadside to bear; closer than this it
 ## bears away a little, to keep its guns clear and not be boarded.
 const BROADSIDE_RANGE := 350.0
@@ -147,6 +151,8 @@ func step() -> void:
 			ship.position = before
 			ship.velocity = Vector2.ZERO
 			ship.yaw_rate = 0.0
+		if absf(ship.heel) > SAFE_HEEL:
+			ship.rigging = maxf(ship.rigging - (absf(ship.heel) - SAFE_HEEL) * HEEL_STRAIN * STEP, 0.1)
 	if grappled >= 0:
 		_hold_alongside()
 		_fight()

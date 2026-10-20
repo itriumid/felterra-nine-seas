@@ -18,6 +18,8 @@ const TURNING_BAND := 3.0
 
 var calendar: Calendar
 var gust_strength := 0.25
+## Squalls and gales on top of the monsoon.
+var weather := Weather.new()
 
 var _gusts := FastNoiseLite.new()
 var _wander := FastNoiseLite.new()
@@ -46,8 +48,14 @@ func season_name(latitude: float) -> String:
 	return "Southwest monsoon" if latitude > 0.0 else "East monsoon"
 
 
-## Velocity of the air at a point on the chart, pointing where it blows to.
+## Velocity of the air at a point on the chart, pointing where it blows to: the monsoon, and
+## any squall or gale passing over.
 func velocity_at(world_position: Vector2) -> Vector2:
+	return base_velocity_at(world_position) + weather.push_at(world_position)
+
+
+## The monsoon's own wind at a point, without the weather.
+func base_velocity_at(world_position: Vector2) -> Vector2:
 	var latitude := Chart.latitude_at(world_position)
 	var north := smoothstep(-TURNING_BAND, TURNING_BAND, latitude)
 	var value := season()
