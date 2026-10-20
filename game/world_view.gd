@@ -352,6 +352,9 @@ func _pose_ships(meters_per_pixel: float) -> void:
 	if meters_per_pixel < TRUE_SIZE_BELOW:
 		var reach := get_viewport_rect().size.length() * meters_per_pixel
 		shown.append(voyage.ship)
+		for prize in voyage.prizes:
+			if prize.ship.position.distance_to(voyage.ship.position) < reach:
+				shown.append(prize.ship)
 		for captain in voyage.captains:
 			if captain.at_sea() and captain.ship.position.distance_to(voyage.ship.position) < reach:
 				shown.append(captain.ship)
@@ -416,6 +419,8 @@ func _draw() -> void:
 		for captain in voyage.captains:
 			if captain.at_sea():
 				_draw_ship_symbol(captain.ship, flag_color(captain.role), captain.role)
+		for prize in voyage.prizes:
+			_draw_ship_symbol(prize.ship, Palette.PLAYER, -1)
 		_draw_ship_symbol(voyage.ship, Palette.PLAYER, -1)
 
 

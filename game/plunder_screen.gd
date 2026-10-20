@@ -12,6 +12,7 @@ var _rows: VBoxContainer
 var _status: Label
 var _notice: Label
 var _shown := {}
+var _prize_note: Label
 
 
 func _ready() -> void:
@@ -25,12 +26,19 @@ func _ready() -> void:
 	title.text = "She has struck. Her hold:"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
+	var prize := Button.new()
+	prize.text = "Take her as a prize"
+	prize.pressed.connect(func() -> void: _notice.text = voyage.bubble.take_as_prize())
+	heading.add_child(prize)
 	var leave := Button.new()
 	leave.text = "Cast off"
 	leave.theme_type_variation = "PrimaryButton"
 	leave.pressed.connect(func() -> void: voyage.cast_off())
 	heading.add_child(leave)
 	layout.add_child(heading)
+	_prize_note = Label.new()
+	_prize_note.theme_type_variation = "MutedLabel"
+	layout.add_child(_prize_note)
 	_rows = VBoxContainer.new()
 	layout.add_child(_rows)
 	_status = Label.new()
@@ -49,6 +57,9 @@ func _process(_delta: float) -> void:
 		_shown = prize.hold.duplicate()
 		_rebuild(prize)
 	_status.text = "Your hold: %d of %d tons" % [voyage.ship.cargo_tons(), int(voyage.ship.design.cargo_capacity)]
+	var crew := voyage.bubble.prize_crew_size()
+	_prize_note.text = ("A prize crew would take %d of your %d sailors; her own are set adrift in their boats." % [crew, voyage.ship.crew]) \
+		if crew >= 4 else "You can't spare a prize crew for her."
 	# Low on the screen: the two ships lashed together in the middle are the point.
 	var screen := get_viewport_rect().size
 	position = Vector2(floorf((screen.x - size.x) / 2.0), screen.y - size.y - BOTTOM)

@@ -4,7 +4,7 @@ extends PanelContainer
 ## Every button sends a command to the voyage and shows the reason when it's refused. The world
 ## keeps its clock in port, so prices and the tavern change while the player looks.
 
-enum Tab { MARKET, SHIPYARD, TAVERN }
+enum Tab { MARKET, SHIPYARD, TAVERN, PRIZES }
 
 const WIDTH := 480.0
 const TOP := 78.0
@@ -40,9 +40,9 @@ func _ready() -> void:
 	layout.add_child(heading)
 
 	var tab_row := HBoxContainer.new()
-	for tab: Tab in [Tab.MARKET, Tab.SHIPYARD, Tab.TAVERN]:
+	for tab: Tab in [Tab.MARKET, Tab.SHIPYARD, Tab.TAVERN, Tab.PRIZES]:
 		var button := Button.new()
-		button.text = ["Market", "Shipyard", "Tavern"][tab]
+		button.text = ["Market", "Shipyard", "Tavern", "Prizes"][tab]
 		button.pressed.connect(open.bind(tab))
 		tab_row.add_child(button)
 		_tabs[tab] = button
@@ -90,6 +90,39 @@ func open(tab: Tab) -> void:
 			_build_shipyard()
 		Tab.TAVERN:
 			_build_tavern()
+		Tab.PRIZES:
+			_build_prizes()
+
+
+## Prizes in port: sell each, ship and cargo, or move into her.
+func _build_prizes() -> void:
+	if voyage.prizes.is_empty():
+		var none := Label.new()
+		none.text = "No prizes. Take a ship that strikes to you, and her prize crew sails her in."
+		none.theme_type_variation = "MutedLabel"
+		_content.add_child(none)
+		return
+	for index in voyage.prizes.size():
+		var prize := voyage.prizes[index]
+		var row := HBoxContainer.new()
+		row.add_child(_live_label(func() -> String:
+			if index >= voyage.prizes.size():
+				return ""
+			var ship := voyage.prizes[index].ship
+			return "%s %s, hull %d%%, %d tons aboard, prize crew %d. Fetches %s" % [
+				prize.role_name(), ship.design.display_name.to_lower(), roundi(ship.hull * 100.0),
+				ship.cargo_tons(), ship.crew, InterfaceDrawing.reals_text(voyage.prize_value(prize))],
+			false, 320.0))
+		row.add_child(_button("Sell her", func() -> String: return _then_reopen(voyage.sell_prize(index))))
+		row.add_child(_button("Move into her", func() -> String: return _then_reopen(voyage.make_prize_flagship(index))))
+		_content.add_child(row)
+
+
+## After a command that changes the list of prizes, rebuild the tab, keeping its answer.
+func _then_reopen(refusal: String) -> String:
+	if refusal.is_empty():
+		open.call_deferred(_tab)
+	return refusal
 
 
 ## Runs a command and shows why, if it was refused.
