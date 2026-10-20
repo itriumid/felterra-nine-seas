@@ -48,6 +48,11 @@ var struck := false
 var hostile := false
 ## A ship hunting the player: the navy after a captain without honor, a pirate after easy prey.
 var hunting := false
+## Where a hunter last saw the player, how long she has been out of sight, and how long until a
+## hunter that lost her will hunt again.
+var last_seen := Vector2.ZERO
+var unseen_for := 0.0
+var given_up_for := 0.0
 ## A pirate's lair, as {name, position}, and how long it has left on its hunting ground.
 var lair := {}
 var loiter_for := 0.0
@@ -59,9 +64,13 @@ var brought_in := false
 ## Meters astern of the player that each prize keeps station.
 const STATION := 800.0
 
-## Pirates spot prey this far off, and take a merchant they catch this close.
-const SIGHT := 25000.0
+## Pirates take a merchant they catch this close. They spot prey as far as the weather lets them
+## see (Weather.sight_at).
 const STRIKE_DISTANCE := 2000.0
+## A hunter that loses the player in rain searches where she was last seen this long, then gives
+## up, and doesn't take up the hunt again for a while after.
+const SEARCH_HOURS := 3.0
+const GIVE_UP_HOURS := 12.0
 ## A pirate hunts within this many meters of its lair, and waits this long on its hunting ground.
 const PROWL_REACH := 500000.0
 const LOITER_HOURS := 48.0
@@ -112,6 +121,7 @@ func sail_for(port: Dictionary, navigation: Navigation) -> void:
 func update(delta: float, true_wind: Vector2, voyage: Voyage) -> void:
 	if in_bubble:
 		return
+	given_up_for = maxf(given_up_for - delta, 0.0)
 	if role == Role.PIRATE:
 		_prowl(delta, true_wind, voyage)
 		return
@@ -141,7 +151,7 @@ func update(delta: float, true_wind: Vector2, voyage: Voyage) -> void:
 ## that step.
 func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
 	if hunting:
-		_follow(_lead(voyage.ship, voyage), delta, voyage)
+		_hunt(delta, voyage)
 	elif quarry != null:
 		_follow(_lead(quarry.ship, voyage), delta, voyage)
 	while not route.is_empty() and _passed(route, voyage):
@@ -159,6 +169,43 @@ func navigate(delta: float, true_wind: Vector2, voyage: Voyage) -> bool:
 	ship.heading = wrapf(rotate_toward(ship.heading, wanted, TURN_RATE * delta), -PI, PI)
 	ship.step(delta, true_wind, voyage.chart)
 	return false
+
+
+## Closes on the player while she can be seen or followed by word of her. Hidden in rain, makes
+## for where she was last seen, searches there, and gives up if she isn't found.
+func _hunt(delta: float, voyage: Voyage) -> void:
+	var weather := voyage.monsoon.weather
+	var in_the_rain := weather.sight_at(voyage.ship.position) < Weather.CLEAR_SIGHT * 0.5
+	if weather.in_sight(ship.position, voyage.ship.position) or not in_the_rain:
+		start_hunting(voyage)
+		_follow(_lead(voyage.ship, voyage), delta, voyage)
+		return
+	if ship.position.distance_to(last_seen) < ARRIVAL_RADIUS:
+		unseen_for += delta
+		if unseen_for > SEARCH_HOURS * 3600.0:
+			_give_up_the_hunt(voyage)
+			return
+	_follow(last_seen, delta, voyage)
+
+
+## Takes up the hunt for the player, or keeps it up: she's where she was last seen.
+func start_hunting(voyage: Voyage) -> void:
+	hunting = true
+	hostile = true
+	last_seen = voyage.ship.position
+	unseen_for = 0.0
+
+
+func _give_up_the_hunt(voyage: Voyage) -> void:
+	hunting = false
+	hostile = false
+	unseen_for = 0.0
+	given_up_for = GIVE_UP_HOURS * 3600.0
+	voyage.tell("You've lost the %s %s in the weather" % [role_name().to_lower(), ship.design.display_name.to_lower()])
+	if role == Role.PIRATE:
+		_head_home(voyage)
+	else:
+		replan = true
 
 
 ## A captain carries what sail the wind allows. The player's crew, sailing a course for them,
@@ -398,15 +445,15 @@ func _watch_for_prey(voyage: Voyage) -> void:
 		_head_home(voyage)
 	if quarry != null or hunting:
 		return
-	var nearby := voyage.ship.position.distance_to(ship.position) < SIGHT
-	if player_at_sea and nearby and ship.crew >= voyage.ship.crew * PREY_ODDS:
-		hunting = true
-		hostile = true
+	var weather := voyage.monsoon.weather
+	var nearby := weather.in_sight(ship.position, voyage.ship.position)
+	if player_at_sea and nearby and given_up_for <= 0.0 and ship.crew >= voyage.ship.crew * PREY_ODDS:
+		start_hunting(voyage)
 		voyage.tell("A pirate sloop is coming after you!")
 		return
 	for other in voyage.captains:
 		if other.role == Role.MERCHANT and other.at_sea() and not other.struck and not other.in_bubble \
-				and other.ship.position.distance_to(ship.position) < SIGHT:
+				and weather.in_sight(ship.position, other.ship.position):
 			quarry = other
 			return
 
@@ -453,6 +500,7 @@ func to_saved(voyage: Voyage) -> Dictionary:
 		"destination": destination.get("name", ""), "patrol": stations,
 		"in_port_for": in_port_for, "tack": tack, "tacks_made": tacks_made,
 		"replan": replan, "struck": struck, "hostile": hostile, "hunting": hunting,
+		"last_seen": [last_seen.x, last_seen.y], "unseen_for": unseen_for, "given_up_for": given_up_for,
 		"beating": _beating, "since_route": _since_route,
 		"lair": lair.get("name", ""), "loiter_for": loiter_for,
 		"consort": consort, "brought_in": brought_in,
@@ -476,6 +524,11 @@ static func from_saved(saved: Dictionary, voyage: Voyage) -> Captain:
 	captain.struck = saved.struck
 	captain.hostile = saved.hostile
 	captain.hunting = saved.hunting
+	# A save from before ships could lose sight of the player: she was in sight.
+	var seen: Array = saved.get("last_seen", [voyage.ship.position.x, voyage.ship.position.y])
+	captain.last_seen = Vector2(seen[0], seen[1])
+	captain.unseen_for = saved.get("unseen_for", 0.0)
+	captain.given_up_for = saved.get("given_up_for", 0.0)
 	captain._beating = saved.beating
 	captain._since_route = saved.since_route
 	captain.lair = voyage.lair_named(saved.get("lair", ""))

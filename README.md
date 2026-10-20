@@ -46,6 +46,12 @@ sail on its own while following a course, but never sets more than you ordered; 
 press S. Every other ship reefs for the weather too. In a battle, heeling too far strains the
 rigging the same way.
 
+Rain hides ships. In clear weather a lookout makes out a sail 25 kilometers off; in the heart
+of a squall, barely a kilometer and a half. A pirate or a navy ship hunting you keeps after you
+by sight and by word, but lose yourself in the rain and it can only sail to where you were last
+seen. If it doesn't find you there within a few hours, it gives up, and won't take up the hunt
+again for half a day. Lying still in the rain doesn't help: they search where they saw you.
+
 ## Ports and trade
 
 Click a port and your crew sails there and moors, or, within five kilometers of one (its

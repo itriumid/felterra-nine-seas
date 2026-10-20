@@ -18,6 +18,11 @@ const SQUALLS_A_DAY := 60.0
 ## Gales born a day across the chart, at the height of a monsoon.
 const GALES_A_DAY := 0.15
 const MOST_CELLS := 32
+## How far a lookout at the masthead makes out a ship in clear weather, and in the thickest rain
+## at the heart of a squall or a gale.
+const CLEAR_SIGHT := 25000.0
+const SQUALL_SIGHT := 1500.0
+const GALE_SIGHT := 4000.0
 ## Where the Sumatras blow: the Malacca Strait, between these latitudes and longitudes.
 const STRAIT_LATITUDES := Vector2(0.5, 6.0)
 const STRAIT_LONGITUDES := Vector2(97.0, 104.0)
@@ -56,6 +61,23 @@ func conditions_at(world_position: Vector2) -> String:
 	if gale > 0.05 or squall > 0.05:
 		return "Wind rising"
 	return ""
+
+
+## How far a lookout can see from a point, in meters: rain shortens it, thick through most of a
+## cell and thinning only at its edge.
+func sight_at(world_position: Vector2) -> float:
+	var sight := CLEAR_SIGHT
+	for cell in cells:
+		var strength := _strength(cell, world_position)
+		if strength > 0.0:
+			var thickest := SQUALL_SIGHT if cell.kind == Kind.SQUALL else GALE_SIGHT
+			sight = minf(sight, lerpf(CLEAR_SIGHT, thickest, sqrt(strength)))
+	return sight
+
+
+## Whether a ship at one point can see a ship at the other: rain around either hides them.
+func in_sight(from: Vector2, to: Vector2) -> bool:
+	return from.distance_to(to) < minf(sight_at(from), sight_at(to))
 
 
 ## How hard a cell blows at a point, 0 to 1: strongest at its heart, and in the middle of its

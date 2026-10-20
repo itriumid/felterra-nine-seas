@@ -89,6 +89,8 @@ func _draw() -> void:
 			ship.design.display_name, ship.speed * InterfaceDrawing.KNOTS_PER_METER_PER_SECOND,
 			InterfaceDrawing.bearing_text(Wind.direction_to_bearing(ship.forward()))],
 		"%s, sails %d%%" % [InterfaceDrawing.point_of_sail(angle, ship.speed), roundi(ship.sail_set * 100.0)],
+		# On show all the time, so strain from the weather can be seen as it happens.
+		"Hull %d%%, rigging %d%%" % [roundi(ship.hull * 100.0), roundi(ship.rigging * 100.0)],
 		"%s, %s" % [nearest.name, InterfaceDrawing.distance_text(ship.position.distance_to(nearest.position))],
 	]
 	if not voyage.prizes.is_empty():
